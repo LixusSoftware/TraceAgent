@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "visor-agentico"
+version = "0.1.0"
+description = "Proxy observability MVP for tool-using AI agents."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.115.0,<1.0.0",
+  "httpx>=0.27.0,<1.0.0",
+  "openai>=1.52.0,<2.0.0",
+  "pydantic>=2.8.0,<3.0.0",
+  "pydantic-settings>=2.3.0,<3.0.0",
+  "sqlalchemy>=2.0.32,<3.0.0",
+  "uvicorn[standard]>=0.30.0,<1.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3.2,<9.0.0",
+]
+audit = [
+  "bandit>=1.8.0,<2.0.0",
+  "deepeval>=1.2.8,<2.0.0",
+  "evidently>=0.6.12,<1.0.0",
+  "garak>=0.10.3,<1.0.0",
+  "llm-guard>=0.3.16,<1.0.0",
+  "opentelemetry-exporter-otlp>=1.28.2,<2.0.0",
+  "opentelemetry-instrumentation-fastapi>=0.49b2,<1.0.0",
+  "opentelemetry-sdk>=1.28.2,<2.0.0",
+  "pandas>=2.2.3,<3.0.0",
+  "presidio-analyzer>=2.2.356,<3.0.0",
+  "presidio-anonymizer>=2.2.356,<3.0.0",
+  "prometheus-client>=0.21.0,<1.0.0",
+  "semgrep>=1.99.0,<2.0.0",
+]
+
+[tool.setuptools.packages.find]
+include = ["visor_agentico*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+

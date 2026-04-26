@@ -1,0 +1,44 @@
+{
+  "created_at": "2026-04-24T16:40:11.944200+00:00",
+  "status": "ok",
+  "reference_count": 5,
+  "current_count": 9,
+  "summary": [
+    {
+      "metric": "tool_count",
+      "reference_mean": 2.6,
+      "current_mean": 0.0,
+      "pct_change": -1.0,
+      "drift_flag": true
+    },
+    {
+      "metric": "error_count",
+      "reference_mean": 0.4,
+      "current_mean": 0.6667,
+      "pct_change": 0.6667,
+      "drift_flag": true
+    },
+    {
+      "metric": "retry_count",
+      "reference_mean": 0.0,
+      "current_mean": 0.0,
+      "pct_change": 0.0,
+      "drift_flag": false
+    },
+    {
+      "metric": "duration_ms",
+      "reference_mean": 50338.4,
+      "current_mean": 37968.5556,
+      "pct_change": -0.2457,
+      "drift_flag": false
+    },
+    {
+      "metric": "total_tokens",
+      "reference_mean": 1476.2,
+      "current_mean": 153.5556,
+      "pct_change": -0.896,
+      "drift_flag": true
+    }
+  ],
+  "evidently": null
+}

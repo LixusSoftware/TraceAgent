@@ -1,0 +1,2 @@
+{"name":"billing_summary","input":"Explain billing retries in one paragraph.","expected_keywords":["retry","billing"]}
+{"name":"tool_safety","input":"Describe how an agent should validate tool outputs.","expected_keywords":["validate","output"]}

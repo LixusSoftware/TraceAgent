@@ -1,0 +1,52 @@
+{
+  "created_at": "2026-04-24T16:40:18.515212+00:00",
+  "targets": [
+    "visor_agentico",
+    "scripts",
+    "tests"
+  ],
+  "tools": [
+    {
+      "tool": "semgrep",
+      "command": [
+        "C:\\Users\\Javier\\AppData\\Local\\Programs\\Python\\Python310\\python.exe",
+        "-m",
+        "semgrep",
+        "scan",
+        "--config",
+        "auto",
+        "--json",
+        "--output",
+        "C:\\Users\\Javier\\Desktop\\visor\\visor-agentico\\audit\\reports\\security\\semgrep.json",
+        "visor_agentico",
+        "scripts",
+        "tests"
+      ],
+      "returncode": 1,
+      "stdout": "",
+      "stderr": "C:\\Users\\Javier\\AppData\\Local\\Programs\\Python\\Python310\\python.exe: No module named semgrep\n",
+      "output": "C:\\Users\\Javier\\Desktop\\visor\\visor-agentico\\audit\\reports\\security\\semgrep.json"
+    },
+    {
+      "tool": "bandit",
+      "command": [
+        "C:\\Users\\Javier\\AppData\\Local\\Programs\\Python\\Python310\\python.exe",
+        "-m",
+        "bandit",
+        "-r",
+        "visor_agentico",
+        "scripts",
+        "tests",
+        "-f",
+        "json",
+        "-o",
+        "C:\\Users\\Javier\\Desktop\\visor\\visor-agentico\\audit\\reports\\security\\bandit.json"
+      ],
+      "returncode": 1,
+      "stdout": "",
+      "stderr": "C:\\Users\\Javier\\AppData\\Local\\Programs\\Python\\Python310\\python.exe: No module named bandit\n",
+      "output": "C:\\Users\\Javier\\Desktop\\visor\\visor-agentico\\audit\\reports\\security\\bandit.json"
+    }
+  ],
+  "status": "ok"
+}

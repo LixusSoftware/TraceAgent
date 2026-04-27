@@ -72,10 +72,21 @@ class ToolResultsRequest(BaseModel):
 
 
 class ObservationInput(BaseModel):
-    kind: Literal["command", "file_read", "file_write", "patch", "artifact"]
+    kind: Literal[
+        "command",
+        "file_read",
+        "file_write",
+        "patch",
+        "artifact",
+        "chain_step",
+        "llm_call",
+        "tool_call",
+        "retriever_query",
+        "agent_action",
+    ]
     step_id: str | None = None
     parent_step_id: str | None = None
-    status: Literal["succeeded", "failed"] | None = None
+    status: Literal["running", "succeeded", "failed"] | None = None
     duration_ms: int | None = None
     error_code: str | None = None
     error_summary: str | None = None
@@ -96,6 +107,10 @@ class ObservationInput(BaseModel):
     line_deletions: int | None = None
     extension: str | None = None
     size_bytes: int | None = None
+    tool_name: str | None = None
+    model: str | None = None
+    provider: str | None = None
+    input_summary: str | None = None
     artifact: ArtifactInput | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
 

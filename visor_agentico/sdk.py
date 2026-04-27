@@ -449,6 +449,26 @@ class RunSession:
             {"error_code": error_code, "error_summary": error_summary},
         )
 
+    def as_langchain_callback(
+        self,
+        *,
+        record_chain_events: bool = True,
+        record_retriever_events: bool = True,
+    ) -> Any:
+        """Return a LangChain callback handler bound to this run.
+
+        Usage:
+            callback = run.as_langchain_callback()
+            chain.invoke({...}, config={"callbacks": [callback]})
+        """
+        from visor_agentico.langchain_callback import VisorLangChainCallback
+
+        return VisorLangChainCallback(
+            self,
+            record_chain_events=record_chain_events,
+            record_retriever_events=record_retriever_events,
+        )
+
     def _execute_tool(self, call: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
         binding = self.tools.get(call["name"])
         if binding is None:

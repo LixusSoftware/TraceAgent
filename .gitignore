@@ -11,4 +11,8 @@ frontend/node_modules/
 *.sqlite3
 *.db
 .env
+.coverage
+*.egg-info/
+*.tsbuildinfo
+actual.md
 

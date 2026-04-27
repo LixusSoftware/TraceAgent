@@ -27,6 +27,11 @@ providers = [
   "anthropic>=0.42.0",
   "google-generativeai>=0.8.0",
 ]
+langchain = [
+  "langchain-core>=0.3.0,<0.4.0",
+  "langchain>=0.3.0,<0.4.0",
+  "langchain-openai>=0.2.0,<0.3.0",
+]
 
 [tool.setuptools.packages.find]
 include = ["visor_agentico*"]

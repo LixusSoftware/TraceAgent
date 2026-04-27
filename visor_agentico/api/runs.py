@@ -722,6 +722,129 @@ def store_observations(
             )
             run.artifact_count += 1
             artifact_event.artifact_refs = [artifact.id]
+            continue
+
+        # ── LangChain observation kinds ────────────────────────────────────
+
+        if observation.kind == "chain_step":
+            event_type = "chain.started" if observation.status == "running" else "chain.completed"
+            if observation.status == "failed":
+                event_type = "chain.failed"
+            record_event(
+                session,
+                run,
+                actor="sdk",
+                event_type=event_type,
+                summary=observation.input_summary or f"Chain step: {observation.metadata.get('chain_type', 'unknown')}",
+                status=observation.status or "observed",
+                step_id=observation.step_id,
+                parent_step_id=observation.parent_step_id,
+                duration_ms=observation.duration_ms,
+                error_code=observation.error_code,
+                payload_hash=stable_hash(observation.metadata),
+                payload_full=observation.metadata if capture_full else None,
+                metadata=observation.metadata,
+            )
+            continue
+
+        if observation.kind == "llm_call":
+            event_type = "llm.started" if observation.status == "running" else "llm.completed"
+            if observation.status == "failed":
+                event_type = "llm.failed"
+            record_event(
+                session,
+                run,
+                actor="sdk" if observation.status == "running" else "provider",
+                event_type=event_type,
+                summary=observation.input_summary or f"LLM call via {observation.provider or 'unknown'}",
+                status=observation.status or "observed",
+                step_id=observation.step_id,
+                parent_step_id=observation.parent_step_id,
+                duration_ms=observation.duration_ms,
+                provider=observation.provider,
+                model=observation.model,
+                error_code=observation.error_code,
+                payload_hash=stable_hash(observation.metadata),
+                payload_full=observation.metadata if capture_full else None,
+                metadata={
+                    "provider": observation.provider,
+                    "model": observation.model,
+                    **observation.metadata,
+                },
+            )
+            continue
+
+        if observation.kind == "tool_call":
+            event_type = "tool.started" if observation.status == "running" else "tool.succeeded"
+            if observation.status == "failed":
+                event_type = "tool.failed"
+                run.error_count += 1
+            record_event(
+                session,
+                run,
+                actor="sdk",
+                event_type=event_type,
+                summary=observation.input_summary or f"Tool call: {observation.tool_name or 'unknown'}",
+                status=observation.status or "observed",
+                step_id=observation.step_id,
+                parent_step_id=observation.parent_step_id,
+                tool_name=observation.tool_name,
+                duration_ms=observation.duration_ms,
+                error_code=observation.error_code,
+                payload_hash=stable_hash(observation.metadata),
+                payload_full=observation.metadata if capture_full else None,
+                metadata={
+                    "tool_name": observation.tool_name,
+                    **observation.metadata,
+                },
+            )
+            continue
+
+        if observation.kind == "retriever_query":
+            event_type = "retriever.queried" if observation.status == "running" else "retriever.responded"
+            if observation.status == "failed":
+                event_type = "retriever.failed"
+            record_event(
+                session,
+                run,
+                actor="sdk",
+                event_type=event_type,
+                summary=observation.input_summary or f"Retriever query",
+                status=observation.status or "observed",
+                step_id=observation.step_id,
+                parent_step_id=observation.parent_step_id,
+                duration_ms=observation.duration_ms,
+                error_code=observation.error_code,
+                payload_hash=stable_hash(observation.metadata),
+                payload_full=observation.metadata if capture_full else None,
+                metadata=observation.metadata,
+            )
+            continue
+
+        if observation.kind == "agent_action":
+            event_type = "agent.action" if observation.status == "running" else "agent.finish"
+            if observation.status == "failed":
+                event_type = "agent.failed"
+            record_event(
+                session,
+                run,
+                actor="sdk",
+                event_type=event_type,
+                summary=observation.input_summary or f"Agent action",
+                status=observation.status or "observed",
+                step_id=observation.step_id,
+                parent_step_id=observation.parent_step_id,
+                tool_name=observation.tool_name,
+                duration_ms=observation.duration_ms,
+                error_code=observation.error_code,
+                payload_hash=stable_hash(observation.metadata),
+                payload_full=observation.metadata if capture_full else None,
+                metadata={
+                    "tool_name": observation.tool_name,
+                    **observation.metadata,
+                },
+            )
+            continue
 
     session.commit()
     return {"status": "ok", "recorded": len(payload.observations)}

@@ -3,16 +3,20 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react
 import { api } from "./api";
 import { AuditDashboard } from "./components/AuditDashboard";
 import { CompareWorkspace } from "./components/CompareWorkspace";
+import { DashboardView } from "./components/DashboardView";
 import { InspectorPanel } from "./components/InspectorPanel";
 import { RunWorkspace } from "./components/RunWorkspace";
+import { useEventStream } from "./hooks/useEventStream";
 import type {
   AuditReport,
   Artifact,
+  DashboardResponse,
   EventItem,
   ExplanationResponse,
   GraphResponse,
   RunAnalytics,
   RunCompareResponse,
+  RunFilters,
   RunListItem,
   RunOverview,
   SimilarRunFilters,
@@ -21,7 +25,7 @@ import type {
 import { buildFlow, defaultSimilarRunFilters, formatDuration } from "./view-utils";
 
 type ViewMode = "execution" | "decisions";
-type WorkspaceMode = "run" | "compare";
+type WorkspaceMode = "run" | "compare" | "dashboard";
 
 type LaunchFormState = {
   agentName: string;
@@ -69,6 +73,9 @@ export default function App() {
   const [comparedRunId, setComparedRunId] = useState<string | null>(null);
   const [compareData, setCompareData] = useState<RunCompareResponse | null>(null);
   const [compareSelection, setCompareSelection] = useState<{ left: number[]; right: number[] }>({ left: [], right: [] });
+  const [dashboard, setDashboard] = useState<DashboardResponse | null>(null);
+  const [isDashboardLoading, setIsDashboardLoading] = useState(false);
+  const [runFilters, setRunFilters] = useState<RunFilters>({});
   const [error, setError] = useState<string | null>(null);
   const [launchForm, setLaunchForm] = useState<LaunchFormState>(INITIAL_LAUNCH_FORM);
   const [launchNotice, setLaunchNotice] = useState<string | null>(null);
@@ -81,7 +88,7 @@ export default function App() {
   const refreshRuns = useCallback(async (preferredRunId?: string) => {
     setIsRefreshingRuns(true);
     try {
-      const data = await api.listRuns();
+      const data = await api.listRuns(runFilters);
       setRuns(data);
       setSelectedRunId((current) => {
         if (preferredRunId && data.some((run) => run.id === preferredRunId)) {
@@ -95,7 +102,7 @@ export default function App() {
     } finally {
       setIsRefreshingRuns(false);
     }
-  }, []);
+  }, [runFilters]);
 
   const updateLaunchField = <K extends keyof LaunchFormState>(field: K, value: LaunchFormState[K]) => {
     setLaunchForm((current) => ({ ...current, [field]: value }));
@@ -183,24 +190,23 @@ export default function App() {
     return () => clearInterval(id);
   }, [refreshRuns]);
 
-  // Poll active run data every 10 s while it is still running.
-  useEffect(() => {
-    if (!selectedRunId) return;
-    const runStatus = runs.find((r) => r.id === selectedRunId)?.status;
-    if (runStatus !== "running") return;
-    const id = setInterval(() => {
-      Promise.all([
-        api.getRun(selectedRunId),
-        api.getTimeline(selectedRunId),
-      ])
-        .then(([runOverview, timelineResponse]) => {
-          setOverview(runOverview);
-          setTimeline(timelineResponse);
-        })
-        .catch(() => undefined);
-    }, 10_000);
-    return () => clearInterval(id);
-  }, [selectedRunId, runs]);
+  // SSE live stream for active run
+  useEventStream(selectedRunId, useCallback((evt) => {
+    if (evt.type === "event") {
+      // Refresh run data when new events arrive
+      if (selectedRunId) {
+        Promise.all([
+          api.getRun(selectedRunId),
+          api.getTimeline(selectedRunId),
+        ])
+          .then(([runOverview, timelineResponse]) => {
+            setOverview(runOverview);
+            setTimeline(timelineResponse);
+          })
+          .catch(() => undefined);
+      }
+    }
+  }, [selectedRunId]));
 
 
   useEffect(() => {
@@ -301,6 +307,28 @@ export default function App() {
       isCurrent = false;
     };
   }, [selectedRunId, similarFilters]);
+
+  // Load dashboard data
+  useEffect(() => {
+    if (workspaceMode !== "dashboard") {
+      setDashboard(null);
+      setIsDashboardLoading(false);
+      return;
+    }
+    let isCurrent = true;
+    setIsDashboardLoading(true);
+    api.getDashboard("24h")
+      .then((data) => {
+        if (isCurrent) setDashboard(data);
+      })
+      .catch((reason) => {
+        if (isCurrent) setError(toErrorMessage(reason));
+      })
+      .finally(() => {
+        if (isCurrent) setIsDashboardLoading(false);
+      });
+    return () => { isCurrent = false; };
+  }, [workspaceMode]);
 
   useEffect(() => {
     if (workspaceMode !== "compare" || !selectedRunId) {
@@ -478,6 +506,18 @@ export default function App() {
           <div className="workspace-switch" role="group" aria-label="Workspace mode" style={{ display: "flex", gap: "2px", background: "rgba(0,0,0,0.05)", borderRadius: "2px", padding: "2px", width: "auto", flexShrink: 0 }}>
             <button
               type="button"
+              className={`secondary-action mode-action ${workspaceMode === "dashboard" ? "active" : ""}`}
+              aria-pressed={workspaceMode === "dashboard"}
+              style={{ padding: "4px 12px", borderRadius: "2px", border: "none", fontSize: "0.75rem", background: workspaceMode === "dashboard" ? "var(--accent)" : "transparent", color: workspaceMode === "dashboard" ? "#fff" : "var(--text)", cursor: "pointer", fontWeight: workspaceMode === "dashboard" ? 500 : 400 }}
+              onClick={() => {
+                setWorkspaceMode("dashboard");
+                resetCompareSelection();
+              }}
+            >
+              Dashboard
+            </button>
+            <button
+              type="button"
               className={`secondary-action mode-action ${workspaceMode === "run" ? "active" : ""}`}
               aria-pressed={workspaceMode === "run"}
               style={{ padding: "4px 12px", borderRadius: "2px", border: "none", fontSize: "0.75rem", background: workspaceMode === "run" ? "var(--accent)" : "transparent", color: workspaceMode === "run" ? "#fff" : "var(--text)", cursor: "pointer", fontWeight: workspaceMode === "run" ? 500 : 400 }}
@@ -517,17 +557,44 @@ export default function App() {
                 <span style={{ fontSize: "0.62rem", color: "#c28f27", letterSpacing: "0.5px", animation: "pulse 1.5s infinite" }}>● LIVE</span>
               )}
             </div>
-            <div style={{ padding: "0 16px 8px" }}>
-              <label className="launcher-field run-search-field" style={{ margin: 0 }}>
-                <input
-                  aria-label="Buscar run"
-                  value={runSearch}
-                  onChange={(event) => setRunSearch(event.target.value)}
-                  placeholder="Filter runs..."
-                  autoComplete="off"
-                  style={{ borderRadius: "2px", border: "1px solid var(--line)", background: "var(--bg)", padding: "4px 8px", fontSize: "0.75rem", width: "100%" }}
-                />
-              </label>
+            <div style={{ padding: "0 16px 8px", display: "flex", flexDirection: "column", gap: "6px" }}>
+              <input
+                aria-label="Buscar run"
+                value={runFilters.search ?? ""}
+                onChange={(e) => setRunFilters((f) => ({ ...f, search: e.target.value || undefined }))}
+                placeholder="Search runs..."
+                autoComplete="off"
+                style={{ borderRadius: "2px", border: "1px solid var(--line)", background: "var(--bg)", padding: "4px 8px", fontSize: "0.75rem", width: "100%" }}
+              />
+              <div style={{ display: "flex", gap: "4px" }}>
+                <select
+                  value={runFilters.status ?? ""}
+                  onChange={(e) => setRunFilters((f) => ({ ...f, status: e.target.value || undefined }))}
+                  style={{ flex: 1, borderRadius: "2px", border: "1px solid var(--line)", background: "var(--bg)", padding: "4px", fontSize: "0.7rem" }}
+                >
+                  <option value="">All statuses</option>
+                  <option value="running">Running</option>
+                  <option value="completed">Completed</option>
+                  <option value="failed">Failed</option>
+                </select>
+                <select
+                  value={runFilters.provider ?? ""}
+                  onChange={(e) => setRunFilters((f) => ({ ...f, provider: e.target.value || undefined }))}
+                  style={{ flex: 1, borderRadius: "2px", border: "1px solid var(--line)", background: "var(--bg)", padding: "4px", fontSize: "0.7rem" }}
+                >
+                  <option value="">All providers</option>
+                  {Array.from(new Set(runs.map((r) => r.provider).filter(Boolean))).map((p) => (
+                    <option key={p} value={p!}>{p}</option>
+                  ))}
+                </select>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setRunFilters({}); setRunSearch(""); }}
+                style={{ fontSize: "0.7rem", padding: "2px 8px", border: "1px solid var(--line)", borderRadius: "2px", background: "transparent", color: "var(--muted)", cursor: "pointer" }}
+              >
+                Clear filters
+              </button>
             </div>
             <div className="run-list" role="list" aria-label="Runs list" style={{ gap: "0", flex: 1, overflowY: "auto", padding: 0 }}>
               {isRefreshingRuns && runs.length === 0 && <p className="empty-copy" style={{ padding: "16px", fontSize: "0.8rem" }}>Loading runs...</p>}
@@ -613,7 +680,9 @@ export default function App() {
           </p>
         )}
           <div style={{ flex: 1, minHeight: 0, overflow: "auto", position: "relative" }}>
-            {!overview ? (
+            {workspaceMode === "dashboard" ? (
+              <DashboardView data={dashboard} isLoading={isDashboardLoading} />
+            ) : !overview ? (
               <div className="empty-stage" style={{ height: "100%", display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center" }}>
                 <h2>Ready to chat</h2>
                 <p>Start a new agent execution below, or select an existing one.</p>

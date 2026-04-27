@@ -9,6 +9,8 @@ export type RunListItem = {
   error_count: number;
   retry_count: number;
   artifact_count: number;
+  total_prompt_tokens: number;
+  total_completion_tokens: number;
   model: string | null;
   provider: string | null;
 };
@@ -207,6 +209,8 @@ export type EventItem = {
   tool_name: string | null;
   artifact_refs: unknown[];
   error_code: string | null;
+  payload_hash: string | null;
+  payload_full: Record<string, unknown> | null;
   metadata: Record<string, unknown>;
 };
 
@@ -418,6 +422,77 @@ export type AuditEvent = {
   findings: AuditFinding[];
   provider: string | null;
   model: string | null;
+};
+
+export type TurnOut = {
+  id: string;
+  run_id: string;
+  seq: number;
+  provider: string | null;
+  model: string | null;
+  messages: Record<string, unknown>[];
+  assistant_message: Record<string, unknown> | null;
+  tool_calls: Record<string, unknown>[];
+  prompt_tokens: number | null;
+  completion_tokens: number | null;
+  total_tokens: number | null;
+  reasoning_tokens: number | null;
+  finish_reason: string | null;
+  response_id: string | null;
+  created_at: string;
+};
+
+export type RunFilters = {
+  limit?: number;
+  offset?: number;
+  agent_name?: string;
+  status?: string;
+  provider?: string;
+  model?: string;
+  search?: string;
+  started_after?: string;
+  started_before?: string;
+};
+
+export type DashboardStats = {
+  total_runs: number;
+  completed_runs: number;
+  failed_runs: number;
+  running_runs: number;
+  total_errors: number;
+  total_tools: number;
+  total_artifacts: number;
+  avg_duration_ms: number | null;
+  total_prompt_tokens: number;
+  total_completion_tokens: number;
+  total_tokens: number;
+};
+
+export type DashboardTrendItem = {
+  date: string;
+  runs: number;
+  completed: number;
+  failed: number;
+};
+
+export type DashboardTopTool = {
+  tool_name: string;
+  call_count: number;
+  avg_duration_ms: number;
+};
+
+export type DashboardTopError = {
+  error_code: string;
+  count: number;
+};
+
+export type DashboardResponse = {
+  stats: DashboardStats;
+  trend: DashboardTrendItem[];
+  top_tools: DashboardTopTool[];
+  top_errors: DashboardTopError[];
+  provider_distribution: Record<string, unknown>[];
+  model_distribution: Record<string, unknown>[];
 };
 
 export type AuditReport = {

@@ -1,6 +1,8 @@
 import type {
   Artifact,
   AuditReport,
+  DashboardResponse,
+  EventItem,
   ExplanationResponse,
   FinishRunResponse,
   GraphResponse,
@@ -8,9 +10,11 @@ import type {
   RunCreateResponse,
   RunAnalytics,
   RunCompareResponse,
+  RunFilters,
   SimilarRunFilters,
   TurnCreatePayload,
   TurnCreateResponse,
+  TurnOut,
   RunListItem,
   RunOverview,
   TimelineResponse
@@ -49,7 +53,20 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
-  listRuns: () => requestJson<RunListItem[]>("/api/runs"),
+  listRuns: (filters?: RunFilters) => {
+    const params = new URLSearchParams();
+    if (filters?.limit !== undefined) params.set("limit", String(filters.limit));
+    if (filters?.offset !== undefined) params.set("offset", String(filters.offset));
+    if (filters?.agent_name) params.set("agent_name", filters.agent_name);
+    if (filters?.status) params.set("status", filters.status);
+    if (filters?.provider) params.set("provider", filters.provider);
+    if (filters?.model) params.set("model", filters.model);
+    if (filters?.search) params.set("search", filters.search);
+    if (filters?.started_after) params.set("started_after", filters.started_after);
+    if (filters?.started_before) params.set("started_before", filters.started_before);
+    const query = params.toString();
+    return requestJson<RunListItem[]>(`/api/runs${query ? `?${query}` : ""}`);
+  },
   createRun: (payload: RunCreatePayload) =>
     requestJson<RunCreateResponse>("/api/runs", {
       method: "POST",
@@ -86,6 +103,20 @@ export const api = {
     requestJson<RunCompareResponse>(`/api/runs/compare?left_run_id=${leftRunId}&right_run_id=${rightRunId}`),
   getExplanation: (id: string) => requestJson<ExplanationResponse>(`/api/runs/${id}/explanation`),
   getArtifacts: (id: string) => requestJson<Artifact[]>(`/api/runs/${id}/artifacts`),
-  getAudit: (id: string) => requestJson<AuditReport>(`/api/runs/${id}/audit`)
+  getAudit: (id: string) => requestJson<AuditReport>(`/api/runs/${id}/audit`),
+  getDashboard: (period: "24h" | "7d" | "30d" = "24h") =>
+    requestJson<DashboardResponse>(`/api/dashboard?period=${period}`),
+  getRunEvents: (runId: string, params?: { type?: string; status?: string; actor?: string; tool_name?: string; step_id?: string; limit?: number; offset?: number }) => {
+    const search = new URLSearchParams();
+    if (params?.type) search.set("type", params.type);
+    if (params?.status) search.set("status", params.status);
+    if (params?.actor) search.set("actor", params.actor);
+    if (params?.tool_name) search.set("tool_name", params.tool_name);
+    if (params?.step_id) search.set("step_id", params.step_id);
+    if (params?.limit !== undefined) search.set("limit", String(params.limit));
+    if (params?.offset !== undefined) search.set("offset", String(params.offset));
+    const query = search.toString();
+    return requestJson<EventItem[]>(`/api/runs/${runId}/events${query ? `?${query}` : ""}`);
+  },
+  getRunTurns: (runId: string) => requestJson<TurnOut[]>(`/api/runs/${runId}/turns`),
 };
-

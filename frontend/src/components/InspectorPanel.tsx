@@ -4,7 +4,7 @@ import type { Artifact, EventItem, ExplanationResponse, RunOverview } from "../t
 import { formatMetadataValue, formatMs, formatWhen, prettifyState } from "../view-utils";
 
 type InspectorPanelProps = {
-  workspaceMode: "run" | "compare";
+  workspaceMode: "run" | "compare" | "dashboard";
   overview: RunOverview | null;
   explanation: ExplanationResponse | null;
   artifacts: Artifact[];

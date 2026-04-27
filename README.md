@@ -21,13 +21,13 @@ Mas detalle en [docs/analytics.md](/C:/Users/evillar/Desktop/test/visor-agentico
 
 ## Arranque rapido
 
+Requisitos: [uv](https://docs.astral.sh/uv/getting-started/installation/) instalado.
+
 Backend:
 
 ```bash
-python -m venv .venv
-.venv\Scripts\activate
-pip install -e .[dev]
-uvicorn visor_agentico.main:app --reload
+uv sync --extra dev
+uv run uvicorn visor_agentico.main:app --reload
 ```
 
 Frontend:
@@ -59,7 +59,7 @@ make build
 Tests:
 
 ```bash
-python -m pytest
+uv run pytest
 ```
 
 Build del frontend:
@@ -150,7 +150,7 @@ uvicorn visor_agentico.main:app --reload
 En otra:
 
 ```bash
-python examples/sample_agent.py
+uv run python examples/sample_agent.py
 ```
 
 ## Probar con LM Studio
@@ -166,8 +166,8 @@ uvicorn visor_agentico.main:app --reload
 2. Ejecuta un ejemplo:
 
 ```bash
-python examples/lm_studio_agent.py
-python examples/lm_studio_planner_agent.py --scenario meetup_plan
+uv run python examples/lm_studio_agent.py
+uv run python examples/lm_studio_planner_agent.py --scenario meetup_plan
 ```
 
 ## Probar el debugger de coding agents
@@ -175,9 +175,9 @@ python examples/lm_studio_planner_agent.py --scenario meetup_plan
 Este ejemplo no necesita modelo. Solo usa el SDK para registrar side effects reales del agente.
 
 ```bash
-uvicorn visor_agentico.main:app --reload
-python examples/coding_agent_debugger_demo.py --scenario correct_edit
-python examples/coding_agent_debugger_demo.py --scenario wrong_file
+uv run uvicorn visor_agentico.main:app --reload
+uv run python examples/coding_agent_debugger_demo.py --scenario correct_edit
+uv run python examples/coding_agent_debugger_demo.py --scenario wrong_file
 ```
 
 Escenarios disponibles:
@@ -297,7 +297,7 @@ El repo incluye un toolkit de auditoria en `scripts/audit` y configuraciones en 
 Instalacion de dependencias opcionales:
 
 ```bash
-make audit-install
+uv pip install -r audit/requirements.txt
 ```
 
 Pipelines disponibles:

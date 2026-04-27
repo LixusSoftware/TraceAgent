@@ -118,6 +118,7 @@ class EventOut(BaseModel):
     id: int
     seq: int
     timestamp: datetime
+    turn_id: str | None = None
     step_id: str | None
     parent_step_id: str | None
     actor: str
@@ -130,6 +131,8 @@ class EventOut(BaseModel):
     tool_name: str | None
     artifact_refs: list[Any]
     error_code: str | None
+    payload_hash: str | None
+    payload_full: dict[str, Any] | None
     metadata: dict[str, Any]
 
     model_config = ConfigDict(from_attributes=True)
@@ -166,6 +169,26 @@ class ArtifactOut(BaseModel):
 class NarrativeItem(BaseModel):
     text: str
     evidence_event_ids: list[int] = Field(default_factory=list)
+
+
+class TurnOut(BaseModel):
+    id: str
+    run_id: str
+    seq: int
+    provider: str | None
+    model: str | None
+    messages: list[dict[str, Any]]
+    assistant_message: dict[str, Any] | None
+    tool_calls: list[dict[str, Any]]
+    prompt_tokens: int | None
+    completion_tokens: int | None
+    total_tokens: int | None
+    reasoning_tokens: int | None
+    finish_reason: str | None
+    response_id: str | None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class TokenUsageSummary(BaseModel):
@@ -282,6 +305,8 @@ class RunOverview(BaseModel):
     error_count: int
     retry_count: int
     artifact_count: int
+    total_prompt_tokens: int
+    total_completion_tokens: int
     started_at: datetime
     ended_at: datetime | None
     metadata: dict[str, Any]
@@ -460,7 +485,50 @@ class RunListItem(BaseModel):
     error_count: int
     retry_count: int
     artifact_count: int
+    total_prompt_tokens: int
+    total_completion_tokens: int
     model: str | None
     provider: str | None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class DashboardStats(BaseModel):
+    total_runs: int
+    completed_runs: int
+    failed_runs: int
+    running_runs: int
+    total_errors: int
+    total_tools: int
+    total_artifacts: int
+    avg_duration_ms: int | None
+    total_prompt_tokens: int
+    total_completion_tokens: int
+    total_tokens: int
+
+
+class DashboardTrendItem(BaseModel):
+    date: str
+    runs: int
+    completed: int
+    failed: int
+
+
+class DashboardTopTool(BaseModel):
+    tool_name: str
+    call_count: int
+    avg_duration_ms: int
+
+
+class DashboardTopError(BaseModel):
+    error_code: str
+    count: int
+
+
+class DashboardResponse(BaseModel):
+    stats: DashboardStats
+    trend: list[DashboardTrendItem]
+    top_tools: list[DashboardTopTool]
+    top_errors: list[DashboardTopError]
+    provider_distribution: list[dict[str, Any]]
+    model_distribution: list[dict[str, Any]]

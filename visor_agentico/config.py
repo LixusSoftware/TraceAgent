@@ -11,6 +11,14 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./visor_agentico.db"
     openai_api_key: str | None = None
     openai_base_url: str | None = None
+    anthropic_api_key: str | None = None
+    anthropic_base_url: str | None = None
+    google_api_key: str | None = None
+    kimi_api_key: str | None = None
+    kimi_base_url: str | None = None
+    lmstudio_base_url: str | None = None
+    lmstudio_mode: str = "openai"
+    lmstudio_api_key: str | None = None
     cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:5173"])
     model_pricing: dict[str, dict[str, float]] = Field(default_factory=dict)
     audit_enable_guardrails: bool = False
@@ -34,6 +42,7 @@ class Settings(BaseSettings):
     audit_otel_service_name: str = "visor-agentico-backend"
     audit_otel_exporter_endpoint: str | None = None
     audit_otel_exporter_protocol: str = "grpc"
+    capture_full_payloads: bool = True
 
     model_config = SettingsConfigDict(
         env_prefix="VISOR_",

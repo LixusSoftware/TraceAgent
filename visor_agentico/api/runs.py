@@ -1,17 +1,21 @@
 from __future__ import annotations
 
+import asyncio
+import json
 from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from sqlalchemy import select
+from fastapi.responses import StreamingResponse
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from visor_agentico.db import get_session
-from visor_agentico.models import Artifact, Decision, Event, Run
+from visor_agentico.models import Artifact, Decision, Event, Run, Turn
 from visor_agentico.redaction import stable_hash, summarize_value
 from visor_agentico.schemas import (
     ArtifactOut,
+    DashboardResponse,
     DecisionOut,
     EventOut,
     ExplanationResponse,
@@ -30,6 +34,7 @@ from visor_agentico.schemas import (
     ToolResultsRequest,
     TurnCreateRequest,
     TurnCreateResponse,
+    TurnOut,
 )
 from visor_agentico.services.analytics import build_similar_runs, build_tool_graph, build_tool_metrics
 from visor_agentico.services.compare import compare_runs
@@ -65,6 +70,7 @@ def _serialize_event(event: Event) -> EventOut:
         id=event.id,
         seq=event.seq,
         timestamp=event.timestamp,
+        turn_id=event.turn_id,
         step_id=event.step_id,
         parent_step_id=event.parent_step_id,
         actor=event.actor,
@@ -77,6 +83,8 @@ def _serialize_event(event: Event) -> EventOut:
         tool_name=event.tool_name,
         artifact_refs=event.artifact_refs,
         error_code=event.error_code,
+        payload_hash=event.payload_hash,
+        payload_full=event.payload_full,
         metadata=event.event_metadata,
     )
 
@@ -139,6 +147,8 @@ def _serialize_run_overview(run: Run, events: list[Event]) -> RunOverview:
         error_count=run.error_count,
         retry_count=run.retry_count,
         artifact_count=run.artifact_count,
+        total_prompt_tokens=run.total_prompt_tokens,
+        total_completion_tokens=run.total_completion_tokens,
         started_at=run.started_at,
         ended_at=run.ended_at,
         metadata=run.run_metadata,
@@ -153,8 +163,36 @@ def _serialize_run_overview(run: Run, events: list[Event]) -> RunOverview:
 
 
 @router.get("/runs", response_model=list[RunListItem])
-def list_runs(session: Session = Depends(get_session)) -> list[RunListItem]:
-    runs = list(session.scalars(select(Run).order_by(Run.started_at.desc())))
+def list_runs(
+    session: Session = Depends(get_session),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    agent_name: str | None = None,
+    status: str | None = None,
+    provider: str | None = None,
+    model: str | None = None,
+    search: str | None = None,
+    started_after: datetime | None = None,
+    started_before: datetime | None = None,
+) -> list[RunListItem]:
+    query = select(Run)
+    if agent_name:
+        query = query.where(Run.agent_name == agent_name)
+    if status:
+        query = query.where(Run.status == status)
+    if provider:
+        query = query.where(Run.provider == provider)
+    if model:
+        query = query.where(Run.model == model)
+    if search:
+        query = query.where(
+            (Run.goal.ilike(f"%{search}%")) | (Run.id.ilike(f"%{search}%"))
+        )
+    if started_after:
+        query = query.where(Run.started_at >= started_after)
+    if started_before:
+        query = query.where(Run.started_at <= started_before)
+    runs = list(session.scalars(query.order_by(Run.started_at.desc()).offset(offset).limit(limit)))
     return [
         RunListItem(
             id=run.id,
@@ -167,6 +205,8 @@ def list_runs(session: Session = Depends(get_session)) -> list[RunListItem]:
             error_count=run.error_count,
             retry_count=run.retry_count,
             artifact_count=run.artifact_count,
+            total_prompt_tokens=run.total_prompt_tokens,
+            total_completion_tokens=run.total_completion_tokens,
             model=run.model,
             provider=run.provider,
         )
@@ -202,6 +242,7 @@ def create_turn(
     registry = request.app.state.provider_registry
     guardrails = getattr(request.app.state, "guardrails", None)
     adapter = registry.get(payload.provider)
+    capture_full = getattr(request.app.state.settings, "capture_full_payloads", True)
     if adapter is None:
         raise HTTPException(status_code=400, detail=f"Unsupported provider: {payload.provider}")
 
@@ -264,6 +305,7 @@ def create_turn(
         provider=payload.provider,
         model=payload.model,
         payload_hash=stable_hash(sanitized_messages),
+        payload_full={"messages": sanitized_messages} if capture_full else None,
         metadata={
             "registered_tool_count": len(payload.tools),
             "tool_names": [tool.name for tool in payload.tools],
@@ -302,6 +344,32 @@ def create_turn(
 
     run.provider = payload.provider
     run.model = payload.model
+
+    # Create Turn record with full messages and token usage
+    usage = response.metadata.get("usage", {}) if response.metadata else {}
+    turn = Turn(
+        run_id=run.id,
+        seq=run.last_event_seq + 1,
+        provider=payload.provider,
+        model=payload.model,
+        messages=sanitized_messages,
+        assistant_message=response.assistant_message,
+        tool_calls=[{"id": c.id, "name": c.name, "arguments": c.arguments, "step_id": c.step_id} for c in response.tool_calls],
+        prompt_tokens=usage.get("prompt_tokens"),
+        completion_tokens=usage.get("completion_tokens"),
+        total_tokens=usage.get("total_tokens"),
+        reasoning_tokens=usage.get("reasoning_tokens"),
+        finish_reason=response.metadata.get("finish_reason") if response.metadata else None,
+        response_id=response.metadata.get("response_id") if response.metadata else None,
+    )
+    session.add(turn)
+    session.flush()
+
+    if turn.prompt_tokens:
+        run.total_prompt_tokens += turn.prompt_tokens
+    if turn.completion_tokens:
+        run.total_completion_tokens += turn.completion_tokens
+
     output_guardrail_findings: list[dict[str, Any]] = []
     if guardrails is not None and response.assistant_message is not None:
         sanitized_assistant_message, output_guardrail_findings = guardrails.sanitize_assistant_message(response.assistant_message)
@@ -331,6 +399,8 @@ def create_turn(
         provider=payload.provider,
         model=payload.model,
         payload_hash=stable_hash(response.assistant_message or [tool_call.__dict__ for tool_call in response.tool_calls]),
+        payload_full={"assistant_message": response.assistant_message, "tool_calls": turn.tool_calls} if capture_full else None,
+        turn_id=turn.id,
         metadata=response_metadata,
     )
 
@@ -350,6 +420,8 @@ def create_turn(
             model=payload.model,
             tool_name=call.name,
             payload_hash=stable_hash(call.arguments),
+            payload_full={"arguments": call.arguments} if capture_full else None,
+            turn_id=turn.id,
             metadata={"call_id": call.id},
         )
 
@@ -375,9 +447,11 @@ def create_turn(
 def store_tool_results(
     run_id: str,
     payload: ToolResultsRequest,
+    request: Request,
     session: Session = Depends(get_session),
 ) -> dict[str, Any]:
     run = _get_run_or_404(session, run_id)
+    capture_full = getattr(request.app.state.settings, "capture_full_payloads", True)
 
     for result in payload.results:
         started_event = record_event(
@@ -390,6 +464,7 @@ def store_tool_results(
             step_id=result.step_id,
             tool_name=result.name,
             payload_hash=stable_hash(result.args),
+            payload_full={"args": result.args} if capture_full else None,
             metadata={"call_id": result.call_id, "args_summary": summarize_value(result.args)},
         )
         if result.status == "succeeded":
@@ -405,6 +480,7 @@ def store_tool_results(
                 tool_name=result.name,
                 duration_ms=result.duration_ms,
                 payload_hash=result.output_hash,
+                payload_full={"output_summary": result.output_summary} if capture_full else None,
                 metadata={"call_id": result.call_id, "artifact_count": len(result.artifacts)},
             )
         else:
@@ -422,6 +498,7 @@ def store_tool_results(
                 duration_ms=result.duration_ms,
                 error_code=result.error_code,
                 payload_hash=result.output_hash,
+                payload_full={"error_summary": result.error_summary} if capture_full else None,
                 metadata={"call_id": result.call_id, "artifact_count": len(result.artifacts)},
             )
 
@@ -460,9 +537,11 @@ def store_tool_results(
 def store_observations(
     run_id: str,
     payload: ObservationsRequest,
+    request: Request,
     session: Session = Depends(get_session),
 ) -> dict[str, Any]:
     run = _get_run_or_404(session, run_id)
+    capture_full = getattr(request.app.state.settings, "capture_full_payloads", True)
 
     for observation in payload.observations:
         if observation.kind == "command":
@@ -478,6 +557,7 @@ def store_observations(
                 step_id=observation.step_id or command_id,
                 parent_step_id=observation.parent_step_id,
                 payload_hash=stable_hash({"command": observation.command, "cwd": observation.cwd}),
+                payload_full={"command": observation.command, "cwd": observation.cwd} if capture_full else None,
                 metadata={
                     "command_id": command_id,
                     "command": observation.command,
@@ -498,6 +578,7 @@ def store_observations(
                     duration_ms=observation.duration_ms,
                     error_code=observation.error_code,
                     payload_hash=stable_hash({"command": observation.command, "error": observation.error_summary}),
+                    payload_full={"command": observation.command, "error_summary": observation.error_summary, "stdout_summary": observation.stdout_summary, "stderr_summary": observation.stderr_summary} if capture_full else None,
                     metadata={
                         "command_id": command_id,
                         "command": observation.command,
@@ -520,6 +601,7 @@ def store_observations(
                     parent_step_id=observation.parent_step_id,
                     duration_ms=observation.duration_ms,
                     payload_hash=stable_hash({"command": observation.command, "output": observation.output_summary}),
+                    payload_full={"command": observation.command, "output_summary": observation.output_summary, "stdout_summary": observation.stdout_summary, "stderr_summary": observation.stderr_summary} if capture_full else None,
                     metadata={
                         "command_id": command_id,
                         "command": observation.command,
@@ -546,6 +628,7 @@ def store_observations(
                 step_id=observation.step_id,
                 parent_step_id=observation.parent_step_id,
                 payload_hash=observation.content_hash,
+                payload_full={"path": observation.path, "size_bytes": observation.size_bytes} if capture_full else None,
                 metadata={
                     "path": observation.path,
                     "content_hash": observation.content_hash,
@@ -568,6 +651,7 @@ def store_observations(
                 step_id=observation.step_id,
                 parent_step_id=observation.parent_step_id,
                 payload_hash=observation.after_hash or observation.content_hash,
+                payload_full={"path": observation.path, "change_type": observation.change_type, "diff_summary": observation.diff_summary} if capture_full else None,
                 metadata={
                     "path": observation.path,
                     "change_type": observation.change_type,
@@ -595,6 +679,7 @@ def store_observations(
                 step_id=observation.step_id,
                 parent_step_id=observation.parent_step_id,
                 payload_hash=observation.after_hash,
+                payload_full={"path": observation.path, "diff_summary": observation.diff_summary} if capture_full else None,
                 metadata={
                     "path": observation.path,
                     "before_hash": observation.before_hash,
@@ -925,3 +1010,78 @@ def get_run_audit(run_id: str, session: Session = Depends(get_session)) -> dict[
         "guardrail_events": guardrail_events,
         "flags": run.flag_cache or [],
     }
+
+
+
+@router.get("/runs/{run_id}/events/stream")
+async def stream_events(
+    run_id: str,
+    request: Request,
+    session: Session = Depends(get_session),
+):
+    _get_run_or_404(session, run_id)
+    from visor_agentico.services.events import _register_sse_queue, _unregister_sse_queue
+
+    queue: asyncio.Queue = asyncio.Queue(maxsize=100)
+    _register_sse_queue(run_id, queue)
+
+    async def event_generator():
+        try:
+            yield f"data: {json.dumps({'type': 'connected', 'run_id': run_id})}\n\n"
+            while True:
+                try:
+                    event_data = await asyncio.wait_for(queue.get(), timeout=15.0)
+                    yield f"data: {json.dumps(event_data)}\n\n"
+                except asyncio.TimeoutError:
+                    yield f"data: {json.dumps({'type': 'heartbeat'})}\n\n"
+        finally:
+            _unregister_sse_queue(run_id, queue)
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
+@router.get("/dashboard", response_model=DashboardResponse)
+def get_dashboard(
+    period: str = Query(default="24h", pattern="^(24h|7d|30d)$"),
+    session: Session = Depends(get_session),
+) -> DashboardResponse:
+    from visor_agentico.services.dashboard import build_dashboard
+    return build_dashboard(session, period)
+
+
+@router.get("/runs/{run_id}/events", response_model=list[EventOut])
+def list_run_events(
+    run_id: str,
+    type: str | None = None,
+    status: str | None = None,
+    actor: str | None = None,
+    tool_name: str | None = None,
+    step_id: str | None = None,
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    session: Session = Depends(get_session),
+) -> list[EventOut]:
+    _get_run_or_404(session, run_id)
+    query = select(Event).where(Event.run_id == run_id)
+    if type:
+        query = query.where(Event.type == type)
+    if status:
+        query = query.where(Event.status == status)
+    if actor:
+        query = query.where(Event.actor == actor)
+    if tool_name:
+        query = query.where(Event.tool_name == tool_name)
+    if step_id:
+        query = query.where(Event.step_id == step_id)
+    events = list(session.scalars(query.order_by(Event.seq).offset(offset).limit(limit)))
+    return [_serialize_event(e) for e in events]
+
+
+@router.get("/runs/{run_id}/turns", response_model=list[TurnOut])
+def list_run_turns(
+    run_id: str,
+    session: Session = Depends(get_session),
+) -> list[TurnOut]:
+    _get_run_or_404(session, run_id)
+    turns = list(session.scalars(select(Turn).where(Turn.run_id == run_id).order_by(Turn.seq)))
+    return [TurnOut.model_validate(t) for t in turns]

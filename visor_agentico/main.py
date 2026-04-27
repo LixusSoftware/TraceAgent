@@ -8,7 +8,36 @@ from visor_agentico.config import Settings, get_settings
 from visor_agentico.db import Base, create_session_factory
 from visor_agentico.services.audit_guardrails import AuditGuardrails
 from visor_agentico.services.observability import AppObservability, configure_opentelemetry
-from visor_agentico.services.provider import OpenAIProviderAdapter
+from visor_agentico.services.provider import (
+    AnthropicProviderAdapter,
+    BaseProviderAdapter,
+    GoogleProviderAdapter,
+    KimiProviderAdapter,
+    LMStudioProviderAdapter,
+    OpenAIProviderAdapter,
+)
+
+
+def build_provider_registry(settings: Settings) -> dict[str, BaseProviderAdapter]:
+    """Dynamically instantiate provider adapters based on available configuration."""
+    registry: dict[str, BaseProviderAdapter] = {}
+
+    # OpenAI is always registered (it can work with just a base_url for local proxies)
+    registry["openai"] = OpenAIProviderAdapter(settings)
+
+    if settings.anthropic_api_key or settings.anthropic_base_url:
+        registry["anthropic"] = AnthropicProviderAdapter(settings)
+
+    if settings.google_api_key:
+        registry["google"] = GoogleProviderAdapter(settings)
+
+    if settings.kimi_api_key or settings.kimi_base_url:
+        registry["kimi"] = KimiProviderAdapter(settings)
+
+    if settings.lmstudio_base_url:
+        registry["lmstudio"] = LMStudioProviderAdapter(settings)
+
+    return registry
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -27,7 +56,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.engine = engine
     app.state.session_factory = session_factory
     app.state.settings = current_settings
-    app.state.provider_registry = {"openai": OpenAIProviderAdapter(current_settings)}
+    app.state.provider_registry = build_provider_registry(current_settings)
     app.state.observability = AppObservability(current_settings.audit_metrics_enabled)
     app.state.observability.instrument_app(app)
     app.state.guardrails = AuditGuardrails(current_settings, app.state.observability)

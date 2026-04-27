@@ -21,6 +21,8 @@ export const sampleRuns: RunListItem[] = [
     error_count: 0,
     retry_count: 0,
     artifact_count: 1,
+    total_prompt_tokens: 42,
+    total_completion_tokens: 15,
     model: "fake-model",
     provider: "openai"
   },
@@ -35,6 +37,8 @@ export const sampleRuns: RunListItem[] = [
     error_count: 1,
     retry_count: 1,
     artifact_count: 1,
+    total_prompt_tokens: 60,
+    total_completion_tokens: 20,
     model: "fake-model",
     provider: "openai"
   }
@@ -213,6 +217,8 @@ export const sampleTimeline: TimelineResponse = {
           tool_name: null,
           artifact_refs: [],
           error_code: null,
+          payload_hash: null,
+          payload_full: null,
           metadata: {}
         },
         {
@@ -231,6 +237,8 @@ export const sampleTimeline: TimelineResponse = {
           tool_name: null,
           artifact_refs: [],
           error_code: null,
+          payload_hash: null,
+          payload_full: null,
           metadata: { stdout_summary: "1 passed" }
         }
       ]
@@ -295,6 +303,8 @@ export const sampleExplanation: ExplanationResponse = {
       tool_name: null,
       artifact_refs: [],
       error_code: null,
+      payload_hash: null,
+      payload_full: null,
       metadata: { path: "src/app.py" }
     }
   }
@@ -551,6 +561,8 @@ export const sampleCompareResponse: RunCompareResponse = {
         tool_name: null,
         artifact_refs: [],
         error_code: "CommandError",
+        payload_hash: null,
+        payload_full: null,
         metadata: { stderr_summary: "1 failed" }
       },
       "17": {
@@ -569,6 +581,8 @@ export const sampleCompareResponse: RunCompareResponse = {
         tool_name: null,
         artifact_refs: [],
         error_code: null,
+        payload_hash: null,
+        payload_full: null,
         metadata: { path: "src/unused.py" }
       }
     }

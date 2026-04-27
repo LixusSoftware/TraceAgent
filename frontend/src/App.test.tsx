@@ -23,7 +23,9 @@ const apiMocks = vi.hoisted(() => ({
   getAnalytics: vi.fn(),
   compareRuns: vi.fn(),
   getExplanation: vi.fn(),
-  getArtifacts: vi.fn()
+  getArtifacts: vi.fn(),
+  getAudit: vi.fn(),
+  getDashboard: vi.fn()
 }));
 
 vi.mock("./api", () => ({
@@ -49,6 +51,15 @@ describe("App", () => {
     apiMocks.compareRuns.mockResolvedValue(sampleCompareResponse);
     apiMocks.getExplanation.mockResolvedValue(sampleExplanation);
     apiMocks.getArtifacts.mockResolvedValue(sampleArtifacts);
+    apiMocks.getAudit.mockResolvedValue({ checks: [], score: 0 });
+    apiMocks.getDashboard.mockResolvedValue({
+      stats: { total_runs: 0, total_turns: 0, total_events: 0, total_errors: 0, avg_latency_ms: 0, success_rate: 0 },
+      trend: [],
+      top_tools: [],
+      top_errors: [],
+      providers: [],
+      models: []
+    });
   });
 
   it("opens compare mode from similar runs and syncs evidence selection", async () => {
@@ -58,8 +69,8 @@ describe("App", () => {
       </ReactFlowProvider>
     );
 
-    expect(await screen.findByRole("heading", { name: "Patch app.py and run tests" })).toBeInTheDocument();
-    fireEvent.click(await screen.findByText("Comparar"));
+    expect(await screen.findByText("Comparar")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Comparar"));
 
     expect(await screen.findByText("Compare workspace")).toBeInTheDocument();
     await waitFor(() => {
@@ -99,8 +110,7 @@ describe("App", () => {
       </ReactFlowProvider>
     );
 
-    await screen.findByRole("heading", { name: "Patch app.py and run tests" });
-    fireEvent.change(screen.getByLabelText("Goal"), { target: { value: "" } });
+    await screen.findByLabelText("Agent name");
     fireEvent.change(screen.getByLabelText("Model"), { target: { value: "google/gemma-4-e4b" } });
     fireEvent.change(screen.getByLabelText("User prompt"), { target: { value: "Hola desde formulario" } });
     fireEvent.submit(screen.getByTestId("launcher-form"));

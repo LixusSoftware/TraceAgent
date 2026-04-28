@@ -1,5 +1,11 @@
 # TraceAgent UI
 
+![GitHub Release](https://img.shields.io/github/v/release/LixusSoftware/TraceAgent)
+![GitHub Stars](https://img.shields.io/github/stars/LixusSoftware/TraceAgent)
+![GitHub License](https://img.shields.io/github/license/LixusSoftware/TraceAgent)
+![Tests](https://github.com/LixusSoftware/TraceAgent/actions/workflows/test.yml/badge.svg)
+![Docker Build](https://github.com/LixusSoftware/TraceAgent/actions/workflows/build-docker.yml/badge.svg)
+
 Static file server for the TraceAgent React frontend. Serves the built SPA and proxies `/api/*` to the backend.
 
 ## Install

@@ -1,5 +1,10 @@
 # TraceAgent LangChain Integration
 
+![GitHub Release](https://img.shields.io/github/v/release/LixusSoftware/TraceAgent)
+![GitHub Stars](https://img.shields.io/github/stars/LixusSoftware/TraceAgent)
+![GitHub License](https://img.shields.io/github/license/LixusSoftware/TraceAgent)
+![Tests](https://github.com/LixusSoftware/TraceAgent/actions/workflows/test.yml/badge.svg)
+
 LangChain callback handler that streams execution events into TraceAgent.
 
 ## Install

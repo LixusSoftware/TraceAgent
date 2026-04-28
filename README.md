@@ -1,5 +1,11 @@
 # TraceAgent
 
+![GitHub Release](https://img.shields.io/github/v/release/LixusSoftware/TraceAgent)
+![GitHub Stars](https://img.shields.io/github/stars/LixusSoftware/TraceAgent)
+![GitHub License](https://img.shields.io/github/license/LixusSoftware/TraceAgent)
+![Tests](https://github.com/LixusSoftware/TraceAgent/actions/workflows/test.yml/badge.svg)
+![Docker Build](https://github.com/LixusSoftware/TraceAgent/actions/workflows/build-docker.yml/badge.svg)
+
 > Observability and tracing for AI agents with tools.
 
 TraceAgent is a full-stack observability platform for tool-using AI agents. It provides:
@@ -39,9 +45,23 @@ run = client.start_run("my-agent", "Do something")
 run.finish()
 ```
 
-### Docker Compose
+### Docker (imágenes publicadas)
 
 ```bash
+# Backend
+docker run -p 8000:8000 ghcr.io/lixussoftware/trace-agent-server:latest
+
+# UI (apunta al backend)
+docker run -p 8080:8080 -e TRACE_AGENT_SERVER_URL=http://host.docker.internal:8000 ghcr.io/lixussoftware/trace-agent-ui:latest
+```
+
+### Docker Compose (desde el repo)
+
+Clona el repo y levanta todo con build local:
+
+```bash
+git clone https://github.com/LixusSoftware/TraceAgent.git
+cd TraceAgent
 docker-compose up --build
 ```
 

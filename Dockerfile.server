@@ -1,0 +1,16 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Copy workspace packages
+COPY packages/trace-agent-sdk /packages/trace-agent-sdk
+COPY packages/trace-agent-server /packages/trace-agent-server
+
+# Install server with all optional provider support
+RUN pip install --no-cache-dir \
+    /packages/trace-agent-sdk \
+    /packages/trace-agent-server[providers]
+
+EXPOSE 8000
+
+CMD ["trace-agent-server", "--host", "0.0.0.0", "--port", "8000"]

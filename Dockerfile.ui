@@ -1,0 +1,20 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Copy workspace packages
+COPY packages/trace-agent-sdk /packages/trace-agent-sdk
+COPY packages/trace-agent-ui /packages/trace-agent-ui
+
+# Install UI package
+RUN pip install --no-cache-dir \
+    /packages/trace-agent-sdk \
+    /packages/trace-agent-ui
+
+EXPOSE 8080
+
+ENV TRACE_AGENT_SERVER_URL=http://server:8000
+ENV TRACE_AGENT_UI_HOST=0.0.0.0
+ENV TRACE_AGENT_UI_PORT=8080
+
+CMD ["trace-agent-ui"]

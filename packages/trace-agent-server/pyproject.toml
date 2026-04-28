@@ -6,6 +6,27 @@ build-backend = "setuptools.build_meta"
 name = "trace-agent-server"
 version = "0.1.0"
 description = "TraceAgent FastAPI backend server."
+authors = [
+  { name = "Enrique Javier Villar Cea", email = "villarcea.enriquejavier@gmail.com" },
+  { name = "Javier Rodriguez Castellano", email = "javirodriguezcastellano@gmail.com" },
+]
+license = { text = "MIT" }
+keywords = ["agent", "observability", "tracing", "llm", "tools"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+[project.urls]
+Homepage = "https://github.com/LixusSoftware/TraceAgent"
+Repository = "https://github.com/LixusSoftware/TraceAgent"
+Issues = "https://github.com/LixusSoftware/TraceAgent/issues"
 requires-python = ">=3.11"
 dependencies = [
   "trace-agent-sdk",

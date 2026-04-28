@@ -101,7 +101,7 @@ def build_dashboard(session: Session, period: str) -> DashboardResponse:
         .where(Run.started_at >= cutoff)
         .group_by(Run.model)
     ).all()
-    model_distribution = [{"model": m or "unknown", "count": c} for m, c in model_dist]
+    model_distribution = [{"model": m, "count": c} for m, c in model_dist if m]
 
     return DashboardResponse(
         stats=DashboardStats(

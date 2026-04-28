@@ -6,6 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "trace-agent-sdk"
 version = "0.1.0"
 description = "TraceAgent SDK for instrumenting AI agents."
+readme = "README.md"
 authors = [
   { name = "Enrique Javier Villar Cea", email = "villarcea.enriquejavier@gmail.com" },
   { name = "Javier Rodriguez Castellano", email = "javirodriguezcastellano@gmail.com" },

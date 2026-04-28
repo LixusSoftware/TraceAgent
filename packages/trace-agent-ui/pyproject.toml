@@ -6,6 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "trace-agent-ui"
 version = "0.1.0"
 description = "TraceAgent UI static server."
+readme = "README.md"
 authors = [
   { name = "Enrique Javier Villar Cea", email = "villarcea.enriquejavier@gmail.com" },
   { name = "Javier Rodriguez Castellano", email = "javirodriguezcastellano@gmail.com" },

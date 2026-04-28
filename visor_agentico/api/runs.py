@@ -239,6 +239,10 @@ def create_turn(
     session: Session = Depends(get_session),
 ) -> TurnCreateResponse:
     run = _get_run_or_404(session, run_id)
+    if not run.provider:
+        run.provider = payload.provider
+    if not run.model:
+        run.model = payload.model
     registry = request.app.state.provider_registry
     guardrails = getattr(request.app.state, "guardrails", None)
     adapter = registry.get(payload.provider)

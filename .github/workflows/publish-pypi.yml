@@ -37,11 +37,10 @@ jobs:
             uv build --package $(basename "$pkg")
           done
 
+      - name: List built artifacts
+        run: ls -la dist/
+
       - name: Publish to PyPI
         env:
           UV_PUBLISH_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
-        run: |
-          for pkg in trace-agent-sdk trace-agent-server trace-agent-langchain trace-agent-ui; do
-            uv publish dist/${pkg}-${{ steps.version.outputs.VERSION }}-py3-none-any.whl
-            uv publish dist/${pkg}-${{ steps.version.outputs.VERSION }}.tar.gz
-          done
+        run: uv publish dist/*

@@ -1,54 +1,8 @@
-[build-system]
-requires = ["setuptools>=68", "wheel"]
-build-backend = "setuptools.build_meta"
+[tool.uv.workspace]
+members = ["packages/*"]
 
-[project]
-name = "visor-agentico"
-version = "0.1.0"
-description = "Proxy observability MVP for tool-using AI agents."
-readme = "README.md"
-requires-python = ">=3.11"
-dependencies = [
-  "fastapi>=0.115.0,<1.0.0",
-  "httpx>=0.27.0,<1.0.0",
-  "openai>=1.52.0,<2.0.0",
-  "pydantic>=2.8.0,<3.0.0",
-  "pydantic-settings>=2.3.0,<3.0.0",
-  "sqlalchemy>=2.0.32,<3.0.0",
-  "uvicorn[standard]>=0.30.0,<1.0.0",
-]
-
-[project.optional-dependencies]
-dev = [
-  "pytest>=8.3.2,<9.0.0",
-  "pytest-cov>=6.0.0,<7.0.0",
-]
-providers = [
-  "anthropic>=0.42.0",
-  "google-generativeai>=0.8.0",
-]
-langchain = [
-  "langchain-core>=0.3.0,<0.4.0",
-  "langchain>=0.3.0,<0.4.0",
-  "langchain-openai>=0.2.0,<0.3.0",
-]
-
-[tool.setuptools.packages.find]
-include = ["visor_agentico*"]
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-addopts = "--cov=visor_agentico --cov-report=term-missing --cov-fail-under=80"
-
-[tool.coverage.run]
-source = ["visor_agentico"]
-omit = ["*/tests/*", "*/test_*"]
-
-[tool.coverage.report]
-exclude_lines = [
-  "pragma: no cover",
-  "def __repr__",
-  "raise AssertionError",
-  "raise NotImplementedError",
-  "if __name__ == .__main__.:",
-]
+[tool.uv.sources]
+trace-agent-sdk = { workspace = true }
+trace-agent-server = { workspace = true }
+trace-agent-langchain = { workspace = true }
+trace-agent-ui = { workspace = true }

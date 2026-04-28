@@ -1,0 +1,1 @@
+recursive-include src/trace_agent_ui/static *

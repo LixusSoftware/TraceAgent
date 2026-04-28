@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "trace-agent-langchain"
+version = "0.1.0"
+description = "LangChain callback integration for TraceAgent."
+requires-python = ">=3.11"
+dependencies = [
+  "trace-agent-sdk",
+  "langchain-core>=0.3.0,<0.4.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3.2,<9.0.0",
+  "langchain>=0.3.0,<0.4.0",
+  "langchain-openai>=0.2.0,<0.3.0",
+  "trace-agent-server",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

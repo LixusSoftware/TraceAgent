@@ -23,16 +23,17 @@ classifiers = [
   "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 
-[project.urls]
-Homepage = "https://github.com/LixusSoftware/TraceAgent"
-Repository = "https://github.com/LixusSoftware/TraceAgent"
-Issues = "https://github.com/LixusSoftware/TraceAgent/issues"
 requires-python = ">=3.11"
 dependencies = [
   "fastapi>=0.115.0,<1.0.0",
   "httpx>=0.27.0,<1.0.0",
   "uvicorn[standard]>=0.30.0,<1.0.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/LixusSoftware/TraceAgent"
+Repository = "https://github.com/LixusSoftware/TraceAgent"
+Issues = "https://github.com/LixusSoftware/TraceAgent/issues"
 
 [project.scripts]
 trace-agent-ui = "trace_agent_ui.app:main"

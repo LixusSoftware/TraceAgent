@@ -15,9 +15,9 @@ def start_mock_backend(port: int = 9999) -> subprocess.Popen:
     wrapper_code = '''
 import sys
 sys.path.insert(0, r"""{root}""")
-from visor_agentico.main import create_app
-from visor_agentico.config import Settings
-from visor_agentico.services.provider import BaseProviderAdapter, ProviderTurnRequest, ProviderTurnResponse, ProviderToolCall
+from trace_agent_server.main import create_app
+from trace_agent_server.config import Settings
+from trace_agent_server.services.provider import BaseProviderAdapter, ProviderTurnRequest, ProviderTurnResponse, ProviderToolCall
 
 class MockProvider(BaseProviderAdapter):
     provider_name = "openai"
@@ -89,9 +89,9 @@ def main() -> int:
     proc = start_mock_backend(port=9999)
     try:
         base_env = {
-            "VISOR_PROXY_URL": "http://127.0.0.1:9999",
-            "VISOR_OPENAI_BASE_URL": "",
-            "VISOR_OPENAI_API_KEY": "mock",
+            "TRACE_AGENT_PROXY_URL": "http://127.0.0.1:9999",
+            "TRACE_AGENT_OPENAI_BASE_URL": "",
+            "TRACE_AGENT_OPENAI_API_KEY": "mock",
         }
 
         results = []
@@ -100,7 +100,7 @@ def main() -> int:
         results.append(run_example("sample_agent.py", base_env))
 
         # lm_studio_agent.py
-        lm_env = {**base_env, "VISOR_TEST_MODEL": "mock-model"}
+        lm_env = {**base_env, "TRACE_AGENT_TEST_MODEL": "mock-model"}
         results.append(run_example("lm_studio_agent.py", lm_env))
 
         # coding_agent_debugger_demo.py scenarios

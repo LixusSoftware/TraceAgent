@@ -8,9 +8,9 @@ from typing import Any
 from sqlalchemy import select
 
 from _common import REPORTS_ROOT, utc_now_iso, write_json, write_text
-from visor_agentico.config import get_settings
-from visor_agentico.db import create_session_factory
-from visor_agentico.models import Run
+from trace_agent_server.config import get_settings
+from trace_agent_server.db import create_session_factory
+from trace_agent_server.models import Run
 
 
 TOKEN_RE = re.compile(r"[a-z0-9]+", re.IGNORECASE)

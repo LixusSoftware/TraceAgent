@@ -6,7 +6,7 @@ from typing import Any
 
 from dotenv import load_dotenv
 
-from visor_agentico.sdk import VisorClient
+from trace_agent_sdk import TraceAgentClient
 
 WEATHER_DATA = {
     ("madrid", "friday"): {
@@ -180,7 +180,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run a richer LM Studio planning agent example.")
     parser.add_argument(
         "--scenario",
-        default=os.getenv("VISOR_COMPLEX_SCENARIO", "meetup_plan"),
+        default=os.getenv("TRACE_AGENT_COMPLEX_SCENARIO", "meetup_plan"),
         choices=sorted(SCENARIOS.keys()),
         help="Built-in scenario to run.",
     )
@@ -196,13 +196,13 @@ def main() -> None:
     load_dotenv()
     args = build_parser().parse_args()
 
-    proxy_url = os.getenv("VISOR_PROXY_URL", "http://127.0.0.1:8000")
-    model_name = os.getenv("VISOR_TEST_MODEL", "local-model")
-    timeout = float(os.getenv("VISOR_PROXY_TIMEOUT", "120"))
+    proxy_url = os.getenv("TRACE_AGENT_PROXY_URL", "http://127.0.0.1:8000")
+    model_name = os.getenv("TRACE_AGENT_TEST_MODEL", "local-model")
+    timeout = float(os.getenv("TRACE_AGENT_PROXY_TIMEOUT", "120"))
     scenario = SCENARIOS[args.scenario]
     user_prompt = args.prompt or scenario["prompt"]
 
-    client = VisorClient(base_url=proxy_url, timeout=timeout)
+    client = TraceAgentClient(base_url=proxy_url, timeout=timeout)
     run = client.start_run(
         agent_name="lmstudio-planner-agent",
         goal=scenario["goal"],

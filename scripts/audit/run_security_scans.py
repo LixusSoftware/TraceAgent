@@ -12,7 +12,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--targets",
         nargs="+",
-        default=["visor_agentico", "scripts", "tests"],
+        default=["trace_agent", "scripts", "tests"],
         help="Directories to scan.",
     )
     parser.add_argument("--semgrep-config", default="auto", help="Semgrep ruleset configuration.")

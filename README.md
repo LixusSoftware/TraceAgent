@@ -1,4 +1,4 @@
-# Visor Agentico
+# TraceAgent
 
 MVP de observabilidad para agentes con tools.
 
@@ -6,18 +6,18 @@ El proyecto tiene tres piezas:
 
 - `backend`: API FastAPI que crea runs, registra eventos, media turnos de modelo y deriva explicaciones.
 - `sdk`: cliente Python para instrumentar agentes y ejecutar tools locales contra el proxy.
-- `frontend`: visor React para inspeccionar runs, timeline, grafos, tool chain, evidencia y analitica por run.
+- `frontend`: frontend React para inspeccionar runs, timeline, grafos, tool chain, evidencia y analitica por run.
 - `compare workspace`: modo de debugger para comparar dos runs lado a lado con divergencia, root cause y diffs.
 
 ## Arquitectura
 
-- El agente usa `VisorClient` y abre un `RunSession`.
+- El agente usa `TraceAgentClient` y abre un `RunSession`.
 - Cada turno de modelo pasa por el proxy en `POST /api/runs/{id}/turns`.
 - Si el modelo pide tools, el SDK las ejecuta localmente y envia el resultado a `POST /api/runs/{id}/tool-results`.
 - Al cerrar el run, el backend genera timeline, grafo de ejecucion, grafo de decisiones y narrativa con evidencia.
 - El SDK tambien puede registrar side effects de coding agents: comandos, lecturas de archivo, escrituras, patches y artefactos.
 
-Mas detalle en [docs/analytics.md](/C:/Users/evillar/Desktop/test/visor-agentico/docs/analytics.md).
+Mas detalle en [docs/analytics.md](/C:/Users/evillar/Desktop/test/trace-agent/docs/analytics.md).
 
 ## Arranque rapido
 
@@ -27,7 +27,7 @@ Backend:
 
 ```bash
 uv sync --extra dev
-uv run uvicorn visor_agentico.main:app --reload
+uv run uvicorn trace_agent.main:app --reload
 ```
 
 Frontend:
@@ -71,45 +71,45 @@ npm run build
 
 ## Variables de entorno
 
-- `VISOR_DATABASE_URL`: por defecto `sqlite:///./visor_agentico.db`; admite PostgreSQL.
-- `VISOR_OPENAI_API_KEY`: API key para el adaptador OpenAI.
-- `VISOR_OPENAI_BASE_URL`: base URL compatible con OpenAI. Sirve para LM Studio.
-- `VISOR_CORS_ORIGINS`: lista separada por comas.
-- `VISOR_PROXY_URL`: URL del backend usada por los ejemplos.
-- `VISOR_PROXY_TIMEOUT`: timeout del SDK de ejemplo.
-- `VISOR_TEST_MODEL`: modelo usado por los ejemplos de LM Studio.
-- `VISOR_MODEL_PRICING`: mapa JSON opcional para estimar coste por modelo.
+- `TRACE_AGENT_DATABASE_URL`: por defecto `sqlite:///./trace_agent.db`; admite PostgreSQL.
+- `TRACE_AGENT_OPENAI_API_KEY`: API key para el adaptador OpenAI.
+- `TRACE_AGENT_OPENAI_BASE_URL`: base URL compatible con OpenAI. Sirve para LM Studio.
+- `TRACE_AGENT_CORS_ORIGINS`: lista separada por comas.
+- `TRACE_AGENT_PROXY_URL`: URL del backend usada por los ejemplos.
+- `TRACE_AGENT_PROXY_TIMEOUT`: timeout del SDK de ejemplo.
+- `TRACE_AGENT_TEST_MODEL`: modelo usado por los ejemplos de LM Studio.
+- `TRACE_AGENT_MODEL_PRICING`: mapa JSON opcional para estimar coste por modelo.
 - `VITE_API_BASE_URL`: base URL opcional del frontend cuando no quieres depender del proxy de Vite.
-- `VISOR_AUDIT_ENABLE_GUARDRAILS`: activa controles de prompt injection y filtrado de salida.
-- `VISOR_AUDIT_FAIL_ON_PROMPT_INJECTION`: bloquea el turno cuando supera el umbral de inyeccion.
-- `VISOR_AUDIT_ENABLE_PII_ANONYMIZATION`: anonimiza PII en input/output con Presidio o fallback regex.
-- `VISOR_AUDIT_PROMPT_INJECTION_THRESHOLD`: umbral de riesgo para marcar inyeccion (0.0..1.0).
-- `VISOR_AUDIT_PII_ENTITIES`: entidades PII permitidas para deteccion.
-- `VISOR_AUDIT_METRICS_ENABLED`: habilita endpoint Prometheus `GET /metrics`.
-- `VISOR_AUDIT_ENABLE_OTEL`: habilita OpenTelemetry para trazas distribuidas.
-- `VISOR_AUDIT_OTEL_SERVICE_NAME`: nombre del servicio para OTel.
-- `VISOR_AUDIT_OTEL_EXPORTER_ENDPOINT`: endpoint OTLP opcional.
-- `VISOR_AUDIT_OTEL_EXPORTER_PROTOCOL`: `grpc` o `http`.
+- `TRACE_AGENT_AUDIT_ENABLE_GUARDRAILS`: activa controles de prompt injection y filtrado de salida.
+- `TRACE_AGENT_AUDIT_FAIL_ON_PROMPT_INJECTION`: bloquea el turno cuando supera el umbral de inyeccion.
+- `TRACE_AGENT_AUDIT_ENABLE_PII_ANONYMIZATION`: anonimiza PII en input/output con Presidio o fallback regex.
+- `TRACE_AGENT_AUDIT_PROMPT_INJECTION_THRESHOLD`: umbral de riesgo para marcar inyeccion (0.0..1.0).
+- `TRACE_AGENT_AUDIT_PII_ENTITIES`: entidades PII permitidas para deteccion.
+- `TRACE_AGENT_AUDIT_METRICS_ENABLED`: habilita endpoint Prometheus `GET /metrics`.
+- `TRACE_AGENT_AUDIT_ENABLE_OTEL`: habilita OpenTelemetry para trazas distribuidas.
+- `TRACE_AGENT_AUDIT_OTEL_SERVICE_NAME`: nombre del servicio para OTel.
+- `TRACE_AGENT_AUDIT_OTEL_EXPORTER_ENDPOINT`: endpoint OTLP opcional.
+- `TRACE_AGENT_AUDIT_OTEL_EXPORTER_PROTOCOL`: `grpc` o `http`.
 
-Ejemplo para `VISOR_MODEL_PRICING`:
+Ejemplo para `TRACE_AGENT_MODEL_PRICING`:
 
 ```env
-VISOR_MODEL_PRICING={"openai:gpt-4.1":{"prompt_per_1k":0.005,"completion_per_1k":0.015}}
+TRACE_AGENT_MODEL_PRICING={"openai:gpt-4.1":{"prompt_per_1k":0.005,"completion_per_1k":0.015}}
 ```
 
-El repo incluye un [`.env`](/C:/Users/evillar/Desktop/test/visor-agentico/.env) listo para pruebas locales con LM Studio en `http://localhost:4321/v1`.
+El repo incluye un [`.env`](/C:/Users/evillar/Desktop/test/trace-agent/.env) listo para pruebas locales con LM Studio en `http://localhost:4321/v1`.
 
 ## Ejemplos
 
 Ejemplo base:
 
-- [examples/sample_agent.py](/C:/Users/evillar/Desktop/test/visor-agentico/examples/sample_agent.py)
+- [examples/sample_agent.py](/C:/Users/evillar/Desktop/test/trace-agent/examples/sample_agent.py)
 
 Ejemplos para LM Studio:
 
-- [examples/lm_studio_agent.py](/C:/Users/evillar/Desktop/test/visor-agentico/examples/lm_studio_agent.py)
-- [examples/lm_studio_planner_agent.py](/C:/Users/evillar/Desktop/test/visor-agentico/examples/lm_studio_planner_agent.py)
-- [examples/coding_agent_debugger_demo.py](/C:/Users/evillar/Desktop/test/visor-agentico/examples/coding_agent_debugger_demo.py)
+- [examples/lm_studio_agent.py](/C:/Users/evillar/Desktop/test/trace-agent/examples/lm_studio_agent.py)
+- [examples/lm_studio_planner_agent.py](/C:/Users/evillar/Desktop/test/trace-agent/examples/lm_studio_planner_agent.py)
+- [examples/coding_agent_debugger_demo.py](/C:/Users/evillar/Desktop/test/trace-agent/examples/coding_agent_debugger_demo.py)
 
 ## Wrappers automaticos del SDK
 
@@ -125,9 +125,9 @@ Ademas de `record_command`, `record_file_read`, `record_file_write`, `record_pat
 Ejemplo rapido:
 
 ```python
-from visor_agentico.sdk import VisorClient
+from trace_agent.sdk import TraceAgentClient
 
-client = VisorClient("http://127.0.0.1:8000")
+client = TraceAgentClient("http://127.0.0.1:8000")
 run = client.start_run("coding-agent", "Patch app.py and run tests")
 
 run.files.read_text("src/app.py")
@@ -144,7 +144,7 @@ Estos wrappers ejecutan la accion real y persisten solo resumentes, hashes y met
 En una terminal:
 
 ```bash
-uvicorn visor_agentico.main:app --reload
+uvicorn trace_agent.main:app --reload
 ```
 
 En otra:
@@ -160,7 +160,7 @@ Si LM Studio expone una API compatible con OpenAI, puedes usarlo sin token real.
 1. Arranca el backend:
 
 ```bash
-uvicorn visor_agentico.main:app --reload
+uvicorn trace_agent.main:app --reload
 ```
 
 2. Ejecuta un ejemplo:
@@ -175,7 +175,7 @@ uv run python examples/lm_studio_planner_agent.py --scenario meetup_plan
 Este ejemplo no necesita modelo. Solo usa el SDK para registrar side effects reales del agente.
 
 ```bash
-uv run uvicorn visor_agentico.main:app --reload
+uv run uvicorn trace_agent.main:app --reload
 uv run python examples/coding_agent_debugger_demo.py --scenario correct_edit
 uv run python examples/coding_agent_debugger_demo.py --scenario wrong_file
 ```

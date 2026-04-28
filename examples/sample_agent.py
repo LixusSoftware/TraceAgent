@@ -4,12 +4,12 @@ import os
 
 from dotenv import load_dotenv
 
-from visor_agentico.sdk import VisorClient
+from trace_agent_sdk import TraceAgentClient
 
 
 def main() -> None:
     load_dotenv()
-    client = VisorClient(base_url=os.getenv("VISOR_PROXY_URL", "http://127.0.0.1:8000"))
+    client = TraceAgentClient(base_url=os.getenv("TRACE_AGENT_PROXY_URL", "http://127.0.0.1:8000"))
     run = client.start_run(
         agent_name="sample-research-agent",
         goal="Summarize the weather workflow and capture the tool trace.",
@@ -20,7 +20,7 @@ def main() -> None:
     def get_weather(city: str) -> dict[str, str]:
         return {"city": city, "forecast": "sunny", "temperature_c": "23"}
 
-    model_name = os.getenv("VISOR_TEST_MODEL", "local-model")
+    model_name = os.getenv("TRACE_AGENT_TEST_MODEL", "local-model")
     result = run.create_model_turn(
         [{"role": "user", "content": "Check the weather in Madrid and summarize it briefly."}],
         model=model_name,

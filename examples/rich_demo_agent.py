@@ -6,8 +6,8 @@ file activity, patches), explicit artifacts, and decisions derived
 automatically by the backend when the run is finished.
 
 Usage:
-    VISOR_PROXY_URL=http://127.0.0.1:8000 \
-    VISOR_TEST_MODEL=qwen/qwen3-vl-8b \
+    TRACE_AGENT_PROXY_URL=http://127.0.0.1:8000 \
+    TRACE_AGENT_TEST_MODEL=qwen/qwen3-vl-8b \
     python examples/rich_demo_agent.py
 """
 from __future__ import annotations
@@ -17,16 +17,16 @@ import time
 
 from dotenv import load_dotenv
 
-from visor_agentico.sdk import VisorClient
+from trace_agent_sdk import TraceAgentClient
 
 
 def main() -> None:
     load_dotenv()
-    proxy_url = os.getenv("VISOR_PROXY_URL", "http://127.0.0.1:8000")
-    model_name = os.getenv("VISOR_TEST_MODEL", "qwen/qwen3-vl-8b")
-    timeout = float(os.getenv("VISOR_PROXY_TIMEOUT", "120"))
+    proxy_url = os.getenv("TRACE_AGENT_PROXY_URL", "http://127.0.0.1:8000")
+    model_name = os.getenv("TRACE_AGENT_TEST_MODEL", "qwen/qwen3-vl-8b")
+    timeout = float(os.getenv("TRACE_AGENT_PROXY_TIMEOUT", "120"))
 
-    client = VisorClient(base_url=proxy_url, timeout=timeout)
+    client = TraceAgentClient(base_url=proxy_url, timeout=timeout)
     run = client.start_run(
         agent_name="rich-demo-agent",
         goal="Build a weather summary report, fix a config file, and capture all traces.",

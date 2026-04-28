@@ -12,9 +12,9 @@ if "%MODEL_ID%"=="" (
 
 if "%PROXY_URL%"=="" set PROXY_URL=http://127.0.0.1:8000
 
-set VISOR_TEST_MODEL=%MODEL_ID%
-set VISOR_PROXY_URL=%PROXY_URL%
+set TRACE_AGENT_TEST_MODEL=%MODEL_ID%
+set TRACE_AGENT_PROXY_URL=%PROXY_URL%
 
-echo Running LM Studio example with model: %VISOR_TEST_MODEL%
+echo Running LM Studio example with model: %TRACE_AGENT_TEST_MODEL%
 python examples\lm_studio_agent.py
 

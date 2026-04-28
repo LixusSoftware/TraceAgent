@@ -4,15 +4,15 @@ import os
 
 from dotenv import load_dotenv
 
-from visor_agentico.sdk import VisorClient
+from trace_agent_sdk import TraceAgentClient
 
 
 def main() -> None:
     load_dotenv()
-    proxy_url = os.getenv("VISOR_PROXY_URL", "http://127.0.0.1:8000")
-    model_name = os.getenv("VISOR_TEST_MODEL", "local-model")
-    timeout = float(os.getenv("VISOR_PROXY_TIMEOUT", "60"))
-    client = VisorClient(base_url=proxy_url, timeout=timeout)
+    proxy_url = os.getenv("TRACE_AGENT_PROXY_URL", "http://127.0.0.1:8000")
+    model_name = os.getenv("TRACE_AGENT_TEST_MODEL", "local-model")
+    timeout = float(os.getenv("TRACE_AGENT_PROXY_TIMEOUT", "60"))
+    client = TraceAgentClient(base_url=proxy_url, timeout=timeout)
     run = client.start_run(
         agent_name="lmstudio-local-agent",
         goal="Use a local OpenAI-compatible model to call a tool and summarize the result.",

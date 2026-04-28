@@ -3,13 +3,13 @@ from __future__ import annotations
 import argparse
 import os
 
-from visor_agentico.sdk import VisorClient
+from trace_agent_sdk import TraceAgentClient
 
 
-def build_client() -> VisorClient:
-    return VisorClient(
-        base_url=os.getenv("VISOR_PROXY_URL", "http://127.0.0.1:8000"),
-        timeout=float(os.getenv("VISOR_PROXY_TIMEOUT", "30")),
+def build_client() -> TraceAgentClient:
+    return TraceAgentClient(
+        base_url=os.getenv("TRACE_AGENT_PROXY_URL", "http://127.0.0.1:8000"),
+        timeout=float(os.getenv("TRACE_AGENT_PROXY_TIMEOUT", "30")),
     )
 
 

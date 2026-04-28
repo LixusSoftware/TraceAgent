@@ -1,14 +1,14 @@
-"""Example: LangChain agent instrumented with Visor Agentico.
+"""Example: LangChain agent instrumented with TraceAgent.
 
-This script demonstrates how to attach the VisorLangChainCallback to a
+This script demonstrates how to attach the TraceAgentLangChainCallback to a
 LangChain agent so that every chain step, LLM call, tool call, and retriever
-query is recorded in the Visor backend.
+query is recorded in the TraceAgent backend.
 
 Requirements:
     uv pip install -e ".[langchain]"
 
 Environment:
-    VISOR_BASE_URL=http://127.0.0.1:8000
+    TRACE_AGENT_BASE_URL=http://127.0.0.1:8000
     OPENAI_BASE_URL=http://localhost:1234/v1   (for LM Studio)
     OPENAI_API_KEY=lm-studio
 """
@@ -21,7 +21,7 @@ from langchain import hub
 from langchain.agents import AgentExecutor, create_openai_tools_agent
 from langchain_openai import ChatOpenAI
 
-from visor_agentico.sdk import VisorClient
+from trace_agent_sdk import TraceAgentClient
 
 
 def get_weather(city: str) -> str:
@@ -35,12 +35,12 @@ def get_news(topic: str) -> str:
 
 
 def main() -> None:
-    base_url = os.getenv("VISOR_BASE_URL", "http://127.0.0.1:8000")
+    base_url = os.getenv("TRACE_AGENT_BASE_URL", "http://127.0.0.1:8000")
     openai_base_url = os.getenv("OPENAI_BASE_URL", "http://localhost:1234/v1")
     openai_api_key = os.getenv("OPENAI_API_KEY", "lm-studio")
 
-    # 1. Start a Visor run
-    client = VisorClient(base_url=base_url)
+    # 1. Start a TraceAgent run
+    client = TraceAgentClient(base_url=base_url)
     run = client.start_run(
         agent_name="langchain-news-weather-agent",
         goal="Answer user questions using weather and news tools",
@@ -90,7 +90,7 @@ def main() -> None:
     # Here we create a minimal demonstration using bind_tools.
     llm_with_tools = llm.bind_tools(tools)
 
-    # 3. Attach the Visor callback
+    # 3. Attach the TraceAgent callback
     callback = run.as_langchain_callback()
 
     # 4. Invoke the model (single turn with tool calling)

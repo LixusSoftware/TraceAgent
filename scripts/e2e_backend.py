@@ -4,8 +4,8 @@ from pathlib import Path
 
 import uvicorn
 
-from visor_agentico.config import Settings
-from visor_agentico.main import create_app
+from trace_agent_server.config import Settings
+from trace_agent_server.main import create_app
 
 
 def main() -> None:

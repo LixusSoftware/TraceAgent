@@ -10,7 +10,7 @@ from _common import REPORTS_ROOT, run_command, utc_now_iso, write_json
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run Garak red-team probes against configured model endpoint.")
     parser.add_argument("--model-type", default="openai", help="Garak model type.")
-    parser.add_argument("--model-name", default=os.getenv("VISOR_TEST_MODEL", "gpt-4.1-mini"), help="Model name.")
+    parser.add_argument("--model-name", default=os.getenv("TRACE_AGENT_TEST_MODEL", "gpt-4.1-mini"), help="Model name.")
     parser.add_argument("--probes", default="promptinject,jailbreak", help="Comma-separated probe set.")
     return parser.parse_args()
 
@@ -53,9 +53,9 @@ def main() -> int:
     report_prefix = str(garak_dir / "garak")
 
     env_info = {
-        "VISOR_OPENAI_BASE_URL": os.getenv("VISOR_OPENAI_BASE_URL"),
-        "VISOR_TEST_MODEL": os.getenv("VISOR_TEST_MODEL"),
-        "OPENAI_API_KEY_present": bool(os.getenv("OPENAI_API_KEY") or os.getenv("VISOR_OPENAI_API_KEY")),
+        "TRACE_AGENT_OPENAI_BASE_URL": os.getenv("TRACE_AGENT_OPENAI_BASE_URL"),
+        "TRACE_AGENT_TEST_MODEL": os.getenv("TRACE_AGENT_TEST_MODEL"),
+        "OPENAI_API_KEY_present": bool(os.getenv("OPENAI_API_KEY") or os.getenv("TRACE_AGENT_OPENAI_API_KEY")),
     }
 
     last_result = None

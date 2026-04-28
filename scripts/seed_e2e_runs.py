@@ -4,11 +4,11 @@ import os
 import sys
 from pathlib import Path
 
-from visor_agentico.sdk import VisorClient
+from trace_agent_sdk import TraceAgentClient
 
 
-def build_client() -> VisorClient:
-    return VisorClient(base_url=os.getenv("VISOR_PROXY_URL", "http://127.0.0.1:8010"))
+def build_client() -> TraceAgentClient:
+    return TraceAgentClient(base_url=os.getenv("TRACE_AGENT_PROXY_URL", "http://127.0.0.1:8010"))
 
 
 def reset_workspace(workspace: Path) -> tuple[Path, Path]:
@@ -21,7 +21,7 @@ def reset_workspace(workspace: Path) -> tuple[Path, Path]:
     return app_path, unused_path
 
 
-def seed_correct_edit(client: VisorClient, workspace: Path, *, clone: bool = False) -> None:
+def seed_correct_edit(client: TraceAgentClient, workspace: Path, *, clone: bool = False) -> None:
     app_path, _ = reset_workspace(workspace)
     scenario = "correct_edit_clone" if clone else "correct_edit"
     goal = "Patch app.py and run tests (clone)" if clone else "Patch app.py and run tests"
@@ -37,7 +37,7 @@ def seed_correct_edit(client: VisorClient, workspace: Path, *, clone: bool = Fal
     run.finish({"summary": "Patched src/app.py and tests passed."})
 
 
-def seed_wrong_file(client: VisorClient, workspace: Path) -> None:
+def seed_wrong_file(client: TraceAgentClient, workspace: Path) -> None:
     app_path, unused_path = reset_workspace(workspace)
     run = client.start_run(
         "coding-agent-demo",
@@ -55,7 +55,7 @@ def seed_wrong_file(client: VisorClient, workspace: Path) -> None:
     run.fail("wrong_file", "The agent edited the wrong file and did not recover.")
 
 
-def seed_retry_without_adaptation(client: VisorClient, workspace: Path) -> None:
+def seed_retry_without_adaptation(client: TraceAgentClient, workspace: Path) -> None:
     app_path, _ = reset_workspace(workspace)
     run = client.start_run(
         "coding-agent-demo",
@@ -78,7 +78,7 @@ def seed_retry_without_adaptation(client: VisorClient, workspace: Path) -> None:
     run.fail("retry_without_adaptation", "The agent repeated the same command and stayed stuck.")
 
 
-def seed_same_tools_different_artifact(client: VisorClient, workspace: Path) -> None:
+def seed_same_tools_different_artifact(client: TraceAgentClient, workspace: Path) -> None:
     app_path, _ = reset_workspace(workspace)
     run = client.start_run(
         "coding-agent-demo",

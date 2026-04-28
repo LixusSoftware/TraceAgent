@@ -119,14 +119,14 @@ Guardrails guardan en metadata:
 
 ## Observabilidad operativa
 
-Si `VISOR_AUDIT_METRICS_ENABLED=true`, el backend expone `GET /metrics` con:
+Si `TRACE_AGENT_AUDIT_METRICS_ENABLED=true`, el backend expone `GET /metrics` con:
 
-- `visor_http_requests_total`
-- `visor_http_request_duration_seconds`
-- `visor_guardrail_findings_total`
-- `visor_guardrail_blocked_total`
+- `trace_agent_http_requests_total`
+- `trace_agent_http_request_duration_seconds`
+- `trace_agent_guardrail_findings_total`
+- `trace_agent_guardrail_blocked_total`
 
-Si `VISOR_AUDIT_ENABLE_OTEL=true`, FastAPI se instrumenta con OpenTelemetry y exporta spans OTLP.
+Si `TRACE_AGENT_AUDIT_ENABLE_OTEL=true`, FastAPI se instrumenta con OpenTelemetry y exporta spans OTLP.
 
 ## Tool graph
 
@@ -148,7 +148,7 @@ Cada fila incluye:
 - latencia total, media y maxima
 - numero de artefactos
 - tokens atribuidos
-- coste estimado si existe `VISOR_MODEL_PRICING`
+- coste estimado si existe `TRACE_AGENT_MODEL_PRICING`
 
 La atribucion de tokens es aproximada:
 

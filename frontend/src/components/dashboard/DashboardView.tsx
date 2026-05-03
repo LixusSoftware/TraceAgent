@@ -30,8 +30,8 @@ interface DashboardViewProps {
 }
 
 const C = {
-  accent: "#22c55e",
-  accentDim: "rgba(34,197,94,0.2)",
+  accent: "#d4a76a",
+  accentDim: "rgba(212,167,106,0.2)",
   danger: "#ef4444",
   dangerDim: "rgba(239,68,68,0.2)",
   info: "#3b82f6",

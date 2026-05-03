@@ -19,7 +19,7 @@ interface ExecutionGraphProps {
 }
 
 const NODE_STYLES: Record<string, { border: string; background: string }> = {
-  event: { border: "#22c55e", background: "#141414" },
+  event: { border: "#d4a76a", background: "#141414" },
   artifact: { border: "#3b82f6", background: "#141414" },
   decision: { border: "#f59e0b", background: "#141414" },
   default: { border: "#737373", background: "#141414" },
@@ -127,7 +127,7 @@ export function ExecutionGraph({ runId, view = "execution", onSelectNode }: Exec
         </div>
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2 text-[10px] text-muted">
-            <LegendItem color="#22c55e" label="Event" />
+            <LegendItem color="#d4a76a" label="Event" />
             <LegendItem color="#ef4444" label="Failed" />
             <LegendItem color="#3b82f6" label="Artifact" />
             <LegendItem color="#f59e0b" label="Decision" />
@@ -165,7 +165,7 @@ export function ExecutionGraph({ runId, view = "execution", onSelectNode }: Exec
           {showMinimap && (
             <MiniMap
               nodeStrokeWidth={2}
-              nodeStrokeColor="#22c55e"
+              nodeStrokeColor="#d4a76a"
               maskColor="rgba(0,0,0,0.7)"
               className="!bg-bg !border !border-line"
               pannable

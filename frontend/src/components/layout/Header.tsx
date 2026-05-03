@@ -30,8 +30,7 @@ export function Header({
   return (
     <header className="h-10 shrink-0 border-b border-line bg-surface flex items-center justify-between px-4">
       <div className="flex items-center gap-3 min-w-0">
-        <Activity className="w-4 h-4 text-accent shrink-0" />
-        <h1 className="text-sm font-semibold tracking-tight">TraceAgent</h1>
+        <img src="/icon.png" alt="TraceAgent" className="h-7 w-auto shrink-0" />
         <span className="text-xs text-muted hidden sm:inline">Trace & Observe</span>
       </div>
 

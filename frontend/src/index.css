@@ -24,11 +24,11 @@
   --surface-strong: #ebebeb;
   --text: #171717;
   --muted: #737373;
-  --accent: #16a34a;
-  --accent-hover: #15803d;
+  --accent: #c69750;
+  --accent-hover: #a67d3a;
   --danger: #dc2626;
   --warning: #d97706;
-  --info: #2563eb;
+  --info: #3b4f64;
   --line: #e5e5e5;
 }
 
@@ -38,11 +38,11 @@
   --surface-strong: #1a1a1a;
   --text: #e5e5e5;
   --muted: #737373;
-  --accent: #22c55e;
-  --accent-hover: #16a34a;
+  --accent: #d4a76a;
+  --accent-hover: #c69750;
   --danger: #ef4444;
   --warning: #f59e0b;
-  --info: #3b82f6;
+  --info: #6b8eab;
   --line: #262626;
 }
 

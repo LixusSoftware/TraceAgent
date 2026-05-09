@@ -2,7 +2,6 @@ name: Build & Push Docker
 
 on:
   push:
-    branches: [main, master]
     tags: ["v*.*.*"]
 
 env:
@@ -19,6 +18,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Verify tag is on main branch
+        if: github.ref_type == 'tag'
+        run: |
+          git fetch origin main
+          git branch -r --contains HEAD | grep -q 'origin/main'
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3

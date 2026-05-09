@@ -1,5 +1,6 @@
 version: 2
 updates:
+  # Python / uv workspace
   - package-ecosystem: "pip"
     directory: "/"
     schedule:
@@ -10,25 +11,86 @@ updates:
       langchain:
         patterns:
           - "langchain*"
+      server-infra:
+        patterns:
+          - "fastapi"
+          - "uvicorn*"
+          - "httpx"
+          - "sqlalchemy"
+      pydantic:
+        patterns:
+          - "pydantic"
+          - "pydantic-settings"
+      providers:
+        patterns:
+          - "openai"
+          - "anthropic"
+          - "google-generativeai"
+      test:
+        patterns:
+          - "pytest"
+          - "pytest-cov"
     labels:
       - "dependencies"
       - "python"
 
+  # Frontend
   - package-ecosystem: "npm"
     directory: "/frontend"
     schedule:
       interval: "weekly"
       day: "monday"
     open-pull-requests-limit: 5
+    groups:
+      react:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "@types/react*"
+      tailwind:
+        patterns:
+          - "tailwindcss"
+          - "@tailwindcss*"
+          - "tailwind-merge"
+      build:
+        patterns:
+          - "vite"
+          - "@vitejs*"
+          - "typescript"
+      test:
+        patterns:
+          - "vitest"
+          - "jsdom"
+          - "playwright"
+          - "@testing-library*"
+      lint:
+        patterns:
+          - "eslint*"
+          - "@eslint*"
+          - "typescript-eslint"
+          - "globals"
     labels:
       - "dependencies"
       - "javascript"
 
+  # Docker
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 3
+    labels:
+      - "dependencies"
+      - "docker"
+
+  # GitHub Actions
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
       day: "monday"
+    open-pull-requests-limit: 5
     labels:
       - "dependencies"
       - "github-actions"

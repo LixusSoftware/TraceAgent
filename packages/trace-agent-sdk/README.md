@@ -4,6 +4,7 @@
 ![GitHub Stars](https://img.shields.io/github/stars/LixusSoftware/TraceAgent)
 ![GitHub License](https://img.shields.io/github/license/LixusSoftware/TraceAgent)
 ![Tests](https://github.com/LixusSoftware/TraceAgent/actions/workflows/test.yml/badge.svg)
+[![Website](https://img.shields.io/badge/website-traceagent.vercel.app-blue)](https://traceagent.vercel.app)
 
 Python SDK for instrumenting AI agents and streaming events to a TraceAgent backend.
 

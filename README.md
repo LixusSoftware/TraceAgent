@@ -2,6 +2,8 @@
 
 > Observability and tracing platform for  AI agents.
 
+🌐 **Website:** [traceagent.vercel.app](https://traceagent.vercel.app)
+
 TraceAgent gives you complete visibility into what your autonomous agents are actually doing - every tool call, file operation, terminal command, and decision path, recorded and visualized in real time.
 
 Compatible with modern agent frameworks such as **LangChain**, TraceAgent integrates naturally into existing agent pipelines, letting you trace chains, tool executions, callbacks, memory interactions, and multi-step reasoning flows with minimal instrumentation.

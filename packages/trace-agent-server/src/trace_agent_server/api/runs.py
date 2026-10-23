@@ -65,6 +65,13 @@ def _get_run_or_404(session: Session, run_id: str) -> Run:
     return run
 
 
+def _token_count(value: Any) -> int:
+    """Return a usable token count from untrusted observation metadata."""
+    if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+        return value
+    return 0
+
+
 def _serialize_event(event: Event) -> EventOut:
     return EventOut(
         id=event.id,
@@ -466,6 +473,7 @@ def store_tool_results(
             summary=f"Started {result.name}.",
             status="running",
             step_id=result.step_id,
+            parent_step_id=result.parent_step_id,
             tool_name=result.name,
             payload_hash=stable_hash(result.args),
             payload_full={"args": result.args} if capture_full else None,
@@ -481,6 +489,7 @@ def store_tool_results(
                 summary=result.output_summary or f"{result.name} completed.",
                 status="succeeded",
                 step_id=result.step_id,
+                parent_step_id=result.parent_step_id,
                 tool_name=result.name,
                 duration_ms=result.duration_ms,
                 payload_hash=result.output_hash,
@@ -498,6 +507,7 @@ def store_tool_results(
                 summary=result.error_summary or f"{result.name} failed.",
                 status="failed",
                 step_id=result.step_id,
+                parent_step_id=result.parent_step_id,
                 tool_name=result.name,
                 duration_ms=result.duration_ms,
                 error_code=result.error_code,
@@ -755,6 +765,14 @@ def store_observations(
             event_type = "llm.started" if observation.status == "running" else "llm.completed"
             if observation.status == "failed":
                 event_type = "llm.failed"
+            if observation.status == "succeeded":
+                # Framework integrations report model usage here instead of via /turns.
+                if not run.provider and observation.provider not in (None, "", "unknown"):
+                    run.provider = observation.provider
+                if not run.model and observation.model:
+                    run.model = observation.model
+                run.total_prompt_tokens += _token_count(observation.metadata.get("prompt_tokens"))
+                run.total_completion_tokens += _token_count(observation.metadata.get("completion_tokens"))
             record_event(
                 session,
                 run,

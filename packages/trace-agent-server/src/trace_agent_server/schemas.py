@@ -57,6 +57,7 @@ class ToolResultInput(BaseModel):
     call_id: str
     name: str
     step_id: str
+    parent_step_id: str | None = None
     status: Literal["succeeded", "failed"]
     args: dict[str, Any] = Field(default_factory=dict)
     output_summary: str | None = None

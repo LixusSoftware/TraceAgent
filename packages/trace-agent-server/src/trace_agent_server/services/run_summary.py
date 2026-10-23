@@ -82,8 +82,8 @@ def build_execution_metadata(run: Run, events: list[Event]) -> dict[str, Any]:
     return {
         "duration_ms": duration_ms,
         "total_event_count": len(events),
-        "model_turn_count": sum(1 for event in events if event.type == "model.requested"),
-        "assistant_turn_count": sum(1 for event in events if event.type == "model.responded"),
+        "model_turn_count": sum(1 for event in events if event.type in {"model.requested", "llm.started"}),
+        "assistant_turn_count": sum(1 for event in events if event.type in {"model.responded", "llm.completed"}),
         "tool_request_count": sum(1 for event in events if event.type == "tool.requested"),
         "tool_success_count": sum(1 for event in events if event.type == "tool.succeeded"),
         "tool_failure_count": sum(1 for event in events if event.type == "tool.failed"),
@@ -139,12 +139,16 @@ def build_timeline_groups(events: list[Event]) -> list[dict[str, Any]]:
                 "event_count": len(group_events),
                 "started_at": group_events[0].timestamp,
                 "ended_at": group_events[-1].timestamp,
-                "duration_ms": max(
+                # The reported duration wins: events of one step are stored together,
+                # so their timestamps only measure the time it took to record them.
+                "duration_ms": last_event.duration_ms
+                if last_event.duration_ms is not None
+                else max(
                     0,
                     int((group_events[-1].timestamp - group_events[0].timestamp).total_seconds() * 1000),
                 )
                 if len(group_events) > 1
-                else group_events[-1].duration_ms,
+                else None,
                 "events": group_events,
             }
         )

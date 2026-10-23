@@ -20,6 +20,7 @@ Compatible with modern agent frameworks such as **LangChain**, TraceAgent integr
   - [SDK](#sdk)
   - [LangChain](#langchain)
   - [Pydantic AI](#pydantic-ai)
+  - [OpenTelemetry](#opentelemetry)
   - [Configuration](#configuration-environment-variables)
 - [Docker Images](#docker-images)
 - [Examples](#examples)
@@ -46,6 +47,7 @@ TraceAgent fills that gap with an **agent-first tracing specification** and a pu
 | **Execution timeline** | Visualize agent behavior through interactive timelines and execution graphs. |
 | **LangChain integration** | Native callback handler for LangChain agents and chains, with zero boilerplate. |
 | **Pydantic AI integration** | Native capability for Pydantic AI 2.x agents, attached in a single line. |
+| **OpenTelemetry ingestion** | OTLP receiver: agents that emit GenAI spans are traced with no TraceAgent code in them. |
 | **Self-hosted** | Full data ownership with a FastAPI backend and SQLite/PostgreSQL support. |
 
 ---
@@ -128,6 +130,12 @@ agent = Agent("openai:gpt-4o", capabilities=[run.as_pydantic_ai_capability()])
 
 ---
 
+### OpenTelemetry
+
+Agents that already emit OpenTelemetry spans following the GenAI semantic conventions (Pydantic AI does) need no TraceAgent code at all: point their OTLP exporter at the server's `POST /v1/traces` and each trace becomes a run, with its model calls, tools, tokens and decisions. See the [server README](./packages/trace-agent-server/README.md#tracing-agents-through-opentelemetry).
+
+---
+
 ### Configuration
 
 TraceAgent's behavior can be customized via environment variables. 
@@ -190,6 +198,15 @@ Pydantic AI integration example. It attaches the TraceAgent capability to a Pyda
 ```bash
 uv sync --extra dev --extra pydantic-ai
 uv run examples/pydantic_ai_agent.py
+```
+
+### `examples/pydantic_ai_otel_agent.py`
+
+The same kind of agent traced through OpenTelemetry alone: nothing from TraceAgent is imported, the agent exports its spans over OTLP to the server. It uses a scripted model and checks at the end that the server recorded the run.
+
+```bash
+uv sync --extra dev --extra pydantic-ai
+uv run examples/pydantic_ai_otel_agent.py
 ```
 
 ### `examples/lm_studio_agent.py`

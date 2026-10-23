@@ -34,6 +34,16 @@ The capability never breaks or slows the agent. Events are delivered by a backgr
 
 Pydantic AI prints a startup banner suggesting Logfire while its own observability is off. It is unrelated to TraceAgent and can be silenced with `PYDANTIC_AI_NO_BANNER=1`.
 
+## Without any code: OpenTelemetry
+
+Pydantic AI already emits OpenTelemetry spans, and the TraceAgent server can receive them, so an agent can be traced
+without this package at all: export its spans over OTLP to `http://<server>/v1/traces`. See the
+[server README](../trace-agent-server/README.md#tracing-agents-through-opentelemetry) and
+[`examples/pydantic_ai_otel_agent.py`](../../examples/pydantic_ai_otel_agent.py).
+
+Pick one route per agent. The capability above records more detail you control (redaction, node events) and works
+without OpenTelemetry; the OpenTelemetry route needs no change to the agent. Using both records the run twice.
+
 ## Options
 
 `run.as_pydantic_ai_capability(...)` accepts:

@@ -22,8 +22,11 @@ export default function App() {
   const [loadedOverview, setOverview] = useState<RunOverview | null>(null)
   const [loadedTimeline, setTimeline] = useState<TimelineResponse | null>(null)
   const [loadedDashboard, setDashboard] = useState<DashboardResponse | null>(null)
-  const [selectedEvent, setSelectedEvent] = useState<EventItem | null>(null)
-  const [selectedGraphNode, setSelectedGraphNode] = useState<GraphNode | null>(null)
+  const [selection, setSelection] = useState<{ runId: string | null; event: EventItem | null; node: GraphNode | null }>({
+    runId: null,
+    event: null,
+    node: null,
+  })
   const [loadedRunId, setLoadedRunId] = useState<string | null>(null)
   const [, setError] = useState<string | null>(null)
   const [runViewMode, setRunViewMode] = useState<RunView>("timeline")
@@ -38,6 +41,9 @@ export default function App() {
   const timeline = selectedRunId ? loadedTimeline : null
   const dashboard = workspaceMode === "dashboard" ? loadedDashboard : null
   const isLoading = selectedRunId !== null && loadedRunId !== selectedRunId
+  // The inspector only shows what was selected in the run that is open.
+  const selectedEvent = selection.runId === selectedRunId ? selection.event : null
+  const selectedGraphNode = selection.runId === selectedRunId ? selection.node : null
 
   const refreshRuns = useCallback(async () => {
     try {
@@ -161,20 +167,22 @@ export default function App() {
   }, [runs, refreshRuns])
 
   const handleSelectEvent = useCallback((event: EventItem | null) => {
-    setSelectedEvent(event)
-    if (event) {
-      setSelectedGraphNode(null)
-      setShowInspector(true)
-    }
-  }, [])
+    setSelection((prev) => ({
+      runId: selectedRunId,
+      event,
+      node: event || prev.runId !== selectedRunId ? null : prev.node,
+    }))
+    if (event) setShowInspector(true)
+  }, [selectedRunId])
 
   const handleSelectGraphNode = useCallback((node: GraphNode | null) => {
-    setSelectedGraphNode(node)
-    if (node) {
-      setSelectedEvent(null)
-      setShowInspector(true)
-    }
-  }, [])
+    setSelection((prev) => ({
+      runId: selectedRunId,
+      event: node || prev.runId !== selectedRunId ? null : prev.event,
+      node,
+    }))
+    if (node) setShowInspector(true)
+  }, [selectedRunId])
 
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-bg text-text">

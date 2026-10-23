@@ -52,6 +52,10 @@ provider.shutdown()  # a short script must flush before exiting
 - `invoke_agent` spans become chain steps, `chat` spans model calls and `execute_tool` spans tools. Event times and
   durations come from the spans; the run gets its provider, model, token totals and tool counters. Other spans are ignored.
 - The run ends when its last agent span ends, also when the agent runs under a web server span or calls other agents.
+- An agent whose output goes through an output function (`output_type=my_function`) also records that function as a tool
+  (`final_result` by default), because Pydantic AI emits an `execute_tool` span for it. It counts in the run's tool total
+  and shows up as a tool choice. The framework capability only records the agent's regular tools, so the two routes differ
+  by that one tool for such agents. Structured output (`output_type=SomeModel`) is not affected.
 - Prompts and outputs are summarized. Full payloads are stored only if `TRACE_AGENT_CAPTURE_FULL_PAYLOADS` is on.
 - Protobuf and JSON bodies are accepted, gzip included. Use either this or the framework integrations for an agent, not
   both, or its run is recorded twice.

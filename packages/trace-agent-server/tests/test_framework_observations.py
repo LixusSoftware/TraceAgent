@@ -120,6 +120,37 @@ class TestLlmCallUsage:
         assert execution["assistant_turn_count"] == 2
 
 
+class TestTokenUsageOfFrameworkRuns:
+    def model_call(self, client, run_id, step, **tokens) -> None:
+        observe(client, run_id, kind="llm_call", step_id=step, status="succeeded", provider="openai", model="m", metadata=tokens)
+
+    def test_the_run_overview_sums_model_calls(self, client) -> None:
+        run_id = start_run(client)
+        self.model_call(client, run_id, "llm-1", prompt_tokens=10, completion_tokens=2)
+        self.model_call(client, run_id, "llm-2", prompt_tokens=5, completion_tokens=1)
+
+        usage = client.get(f"/api/runs/{run_id}").json()["execution"]["token_usage"]
+        assert usage == {"prompt_tokens": 15, "completion_tokens": 3, "total_tokens": 18, "reasoning_tokens": 0}
+
+    def test_a_reported_total_wins_over_the_sum(self, client) -> None:
+        run_id = start_run(client)
+        self.model_call(client, run_id, "llm-1", prompt_tokens=10, completion_tokens=2, total_tokens=20)
+
+        assert client.get(f"/api/runs/{run_id}").json()["execution"]["token_usage"]["total_tokens"] == 20
+
+    def test_compare_reports_the_token_difference_between_two_runs(self, client) -> None:
+        left, right = start_run(client), start_run(client)
+        self.model_call(client, left, "llm-1", prompt_tokens=10, completion_tokens=2)
+        self.model_call(client, right, "llm-1", prompt_tokens=30, completion_tokens=4)
+        for run_id in (left, right):
+            assert client.post(f"/api/runs/{run_id}/finish", json={"final_output": "done"}).status_code == 200
+
+        response = client.get("/api/runs/compare", params={"left_run_id": left, "right_run_id": right})
+
+        assert response.status_code == 200
+        assert response.json()["overview_diff"]["token_total_delta"] == (30 + 4) - (10 + 2)
+
+
 class TestToolResultParent:
     def tool_result(self, **extra) -> dict:
         return {

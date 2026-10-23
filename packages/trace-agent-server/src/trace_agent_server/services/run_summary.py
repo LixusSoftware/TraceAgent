@@ -3,6 +3,18 @@ from __future__ import annotations
 from typing import Any
 
 from trace_agent_server.models import Event, Run
+from trace_agent_server.services.run_lifecycle import token_count
+
+
+def event_total_tokens(event: Event) -> int:
+    """Tokens one event accounts for: a native model response or a framework's finished model call."""
+    if event.type == "model.responded":
+        return int((event.event_metadata.get("usage") or {}).get("total_tokens") or 0)
+    if event.type == "llm.completed":
+        metadata = event.event_metadata
+        reported = token_count(metadata.get("total_tokens"))
+        return reported or token_count(metadata.get("prompt_tokens")) + token_count(metadata.get("completion_tokens"))
+    return 0
 
 
 STATE_BY_EVENT_TYPE = {
@@ -63,6 +75,14 @@ def build_execution_metadata(run: Run, events: list[Event]) -> dict[str, Any]:
 
     token_usage = _token_usage_template()
     for event in events:
+        if event.type == "llm.completed":
+            # A framework integration reports usage per model call, not through /turns.
+            prompt = token_count(event.event_metadata.get("prompt_tokens"))
+            completion = token_count(event.event_metadata.get("completion_tokens"))
+            token_usage["prompt_tokens"] += prompt
+            token_usage["completion_tokens"] += completion
+            token_usage["total_tokens"] += event_total_tokens(event)
+            continue
         if event.type != "model.responded":
             continue
         usage = event.event_metadata.get("usage", {})

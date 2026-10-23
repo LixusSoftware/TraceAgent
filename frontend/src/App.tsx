@@ -115,6 +115,8 @@ export default function App() {
   }, [selectedRunId, refreshRuns]))
 
   const selectedRun = useMemo(() => runs.find((r) => r.id === selectedRunId) ?? null, [runs, selectedRunId])
+  // The inspector resolves what a decision or graph node refers to from the events of the open run.
+  const runEvents = useMemo(() => timeline?.groups.flatMap((group) => group.events) ?? [], [timeline])
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -254,6 +256,8 @@ export default function App() {
             overview={overview}
             selectedEvent={selectedEvent}
             selectedGraphNode={selectedGraphNode}
+            events={runEvents}
+            onSelectEvent={handleSelectEvent}
           />
         )}
       </div>

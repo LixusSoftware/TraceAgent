@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+﻿import { describe, it, expect } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { Timeline } from "./Timeline";
 import type { EventItem, TimelineGroup, TimelineResponse } from "../../types";
@@ -69,20 +69,20 @@ describe("Timeline", () => {
 
   it("hides child groups until their parent is expanded, then shows them", () => {
     renderTimeline([run, llm, tool]);
-    expect(screen.queryByText("llm.completed")).not.toBeInTheDocument();
+    expect(screen.queryByText("Model call")).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByText("chain.completed"));
+    fireEvent.click(screen.getByText("Agent run"));
 
-    expect(screen.getByText("llm.completed")).toBeInTheDocument();
+    expect(screen.getByText("Model call")).toBeInTheDocument();
     expect(screen.getByText("get_weather")).toBeInTheDocument();
   });
 
   it("interleaves own events and child groups in chronological order", () => {
     renderTimeline([run, llm, tool]);
-    fireEvent.click(screen.getByText("chain.completed"));
+    fireEvent.click(screen.getByText("Agent run"));
 
     const text = document.body.textContent ?? "";
-    const order = ["Run started", "llm.completed", "get_weather", "Run completed"].map((s) => text.indexOf(s));
+    const order = ["Run started", "Model call", "get_weather", "Run completed"].map((s) => text.indexOf(s));
     expect(order.every((i) => i >= 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
   });
@@ -92,6 +92,7 @@ describe("Timeline", () => {
       makeEvent(9, "llm.completed", "Orphan", "llm-9", "missing-parent"),
     ]);
     renderTimeline([orphan]);
-    expect(screen.getByText("orphan.group")).toBeInTheDocument();
+    expect(screen.getByText("Model call")).toBeInTheDocument();
   });
 });
+

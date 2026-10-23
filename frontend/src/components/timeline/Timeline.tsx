@@ -3,6 +3,7 @@ import { ChevronDown, ChevronRight, Clock, AlertCircle, CheckCircle2, Loader2 } 
 import type { TimelineResponse, EventItem, TimelineGroup } from "../../types"
 import { EventIcon } from "./EventIcon"
 import { formatDuration, formatWhen } from "../../lib/utils"
+import { groupTitle } from "../../lib/humanize"
 
 type TimelineRow = { seq: number; event: EventItem } | { seq: number; child: TimelineGroup }
 
@@ -156,7 +157,7 @@ function TimelineGroupNode({
         <EventIcon type={group.events[0]?.type ?? "unknown"} />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <span className="text-xs font-medium truncate">{group.label}</span>
+            <span className="text-xs font-medium truncate">{groupTitle(group)}</span>
             <StatusBadge status={group.status} />
           </div>
           {pct > 0 && (

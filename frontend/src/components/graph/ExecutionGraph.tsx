@@ -10,6 +10,7 @@ import {
 } from "@xyflow/react";
 import type { GraphResponse, GraphNode, GraphEdge } from "../../types";
 import { api } from "../../api";
+import { decisionKindLabel, eventNodeLabel } from "../../lib/humanize";
 import { GitBranch, Map } from "lucide-react";
 
 interface ExecutionGraphProps {
@@ -37,7 +38,7 @@ function buildFlowNodes(nodes: GraphNode[]): Node[] {
       id: node.id,
       type: "default",
       position: node.position,
-      data: { label: node.label, ...node.data },
+      data: { label: node.type === "event" ? eventNodeLabel(node.label, node.data?.toolName) : node.label, ...node.data },
       draggable: false,
       selectable: true,
       sourcePosition: Position.Bottom,
@@ -62,7 +63,7 @@ function buildFlowEdges(edges: GraphEdge[]): Edge[] {
     id: edge.id,
     source: edge.source,
     target: edge.target,
-    label: edge.label ?? undefined,
+    label: edge.label ? decisionKindLabel(edge.label) : undefined,
     animated: edge.animated,
     style: { stroke: "#525252", strokeWidth: 1.5 },
     labelStyle: { fill: "#a3a3a3", fontSize: 9 },

@@ -156,6 +156,72 @@ class TestToolResultParent:
         assert {event.parent_step_id for event in events} == {None}
 
 
+def post_tool(client: TestClient, run_id: str, step_id: str, name: str, *, status: str = "succeeded", args: dict | None = None) -> None:
+    result = {"call_id": step_id, "name": name, "step_id": step_id, "status": status, "args": args or {}}
+    response = client.post(f"/api/runs/{run_id}/tool-results", json={"results": [result]})
+    assert response.status_code == 200, response.text
+
+
+def explanation(client: TestClient, run_id: str) -> dict:
+    # Decisions are derived when a run finishes, not while it is still running.
+    assert client.post(f"/api/runs/{run_id}/finish", json={"final_output": "done"}).status_code == 200
+    response = client.get(f"/api/runs/{run_id}/explanation")
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+class TestDecisionsFromFrameworkTools:
+    """Integrations never emit tool.requested, so the start of a tool is the choice."""
+
+    def test_each_tool_start_becomes_a_tool_choice(self, client) -> None:
+        run_id = start_run(client)
+        post_tool(client, run_id, "t1", "get_weather", args={"city": "Madrid"})
+        post_tool(client, run_id, "t2", "get_news", args={"topic": "ai"})
+
+        labels = [d["label"] for d in explanation(client, run_id)["decisions"] if d["kind"] == "tool_choice"]
+        assert labels == ["Selected get_weather", "Selected get_news"]
+
+    def test_a_failure_followed_by_the_same_tool_is_a_retry_then_a_recovery(self, client) -> None:
+        run_id = start_run(client)
+        post_tool(client, run_id, "t1", "lookup", status="failed")
+        post_tool(client, run_id, "t2", "lookup", status="succeeded")
+
+        kinds = [d["kind"] for d in explanation(client, run_id)["decisions"]]
+        assert "retry" in kinds
+        assert "recovery" in kinds
+        assert client.get(f"/api/runs/{run_id}").json()["retry_count"] == 1
+
+    def test_repeating_the_same_call_is_flagged_as_a_loop(self, client) -> None:
+        run_id = start_run(client)
+        for step in ("t1", "t2", "t3"):
+            post_tool(client, run_id, step, "search", args={"q": "same"})
+
+        flags = explanation(client, run_id)["flags"]
+        assert any(flag["type"] == "loop" for flag in flags)
+
+    def test_the_same_tool_with_different_arguments_is_not_a_loop(self, client) -> None:
+        run_id = start_run(client)
+        for step, query in (("t1", "a"), ("t2", "b"), ("t3", "c")):
+            post_tool(client, run_id, step, "search", args={"q": query})
+
+        flags = explanation(client, run_id)["flags"]
+        assert not any(flag["type"] == "loop" for flag in flags)
+
+    def test_a_native_tool_request_is_not_counted_twice(self, client) -> None:
+        run_id = start_run(client)
+        # The native flow records tool.requested and then tool.started under the same step.
+        with client.app.state.session_factory() as session:
+            from trace_agent_server.services.events import record_event
+
+            run = session.get(Run, run_id)
+            record_event(session, run, actor="proxy", event_type="tool.requested", summary="Requested search.", status="requested", step_id="t1", tool_name="search")
+            session.commit()
+        post_tool(client, run_id, "t1", "search")
+
+        labels = [d["label"] for d in explanation(client, run_id)["decisions"] if d["kind"] == "tool_choice"]
+        assert labels == ["Selected search"]
+
+
 class TestTimelineGroupDuration:
     def test_reported_duration_wins_over_recording_time(self, client) -> None:
         run_id = start_run(client)

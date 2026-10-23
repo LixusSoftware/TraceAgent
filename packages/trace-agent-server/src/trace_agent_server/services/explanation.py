@@ -57,8 +57,14 @@ def derive_explanation(session: Session, run: Run) -> dict[str, Any]:
             )
         )
 
+    # Framework integrations (LangChain, Pydantic AI) report tools only through
+    # /tool-results and never emit tool.requested: there, the start of a tool is
+    # the moment the agent chose it.
+    requested_steps = {event.step_id for event in events if event.type == "tool.requested" and event.step_id}
+
     for event in events:
-        if event.type == "tool.requested":
+        derived_request = event.type == "tool.started" and event.step_id not in requested_steps
+        if event.type == "tool.requested" or derived_request:
             tool_name = event.tool_name or "unknown tool"
             add_decision(
                 seq=event.seq,
@@ -69,7 +75,8 @@ def derive_explanation(session: Session, run: Run) -> dict[str, Any]:
                 evidence_event_ids=[event.id],
                 outcome="requested",
             )
-            key = (tool_name, event.summary)
+            # "Started X." is identical for every call, so tell calls apart by their arguments.
+            key = (tool_name, (event.payload_hash or event.summary) if derived_request else event.summary)
             loop_tracker[key].append(event)
             if len(loop_tracker[key]) >= 3:
                 add_flag(

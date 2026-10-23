@@ -1,0 +1,117 @@
+from __future__ import annotations
+
+from datetime import datetime, timedelta, timezone
+
+import pytest
+from fastapi.testclient import TestClient
+
+from trace_agent_server.config import Settings
+from trace_agent_server.main import create_app
+from trace_agent_server.models import Event, Run
+from trace_agent_server.schemas import ToolResultInput
+from trace_agent_server.services.events import record_event
+from trace_agent_server.services.run_lifecycle import (
+    apply_llm_usage,
+    complete_run,
+    fail_run_with,
+    record_tool_result,
+    token_count,
+)
+
+START = datetime(2026, 10, 1, 12, 0, 0, tzinfo=timezone.utc)
+
+
+@pytest.fixture
+def session(tmp_path):
+    settings = Settings(database_url=f"sqlite:///{tmp_path / 'test.db'}", cors_origins=["http://localhost:5173"])
+    app = create_app(settings)
+    with TestClient(app).app.state.session_factory() as session:
+        yield session
+
+
+@pytest.fixture
+def run(session) -> Run:
+    run = Run(agent_name="agent", goal="goal")
+    session.add(run)
+    session.flush()
+    return run
+
+
+def as_utc(value: datetime) -> datetime:
+    # SQLite hands datetimes back without a time zone: they are stored as UTC.
+    return value.replace(tzinfo=timezone.utc)
+
+
+def events_of(session, run: Run) -> list[Event]:
+    return session.query(Event).filter_by(run_id=run.id).order_by(Event.seq).all()
+
+
+class TestRecordEventTimestamp:
+    def test_uses_the_given_timestamp(self, session, run) -> None:
+        event = record_event(session, run, actor="otlp", event_type="x", summary="s", timestamp=START)
+        assert as_utc(event.timestamp) == START
+
+    def test_defaults_to_now(self, session, run) -> None:
+        event = record_event(session, run, actor="otlp", event_type="x", summary="s")
+        assert abs((datetime.now(timezone.utc) - as_utc(event.timestamp)).total_seconds()) < 5
+
+
+class TestTokenCount:
+    @pytest.mark.parametrize("value, expected", [(5, 5), (0, 0), (-1, 0), (True, 0), ("7", 0), (None, 0), (2.5, 0)])
+    def test_only_positive_integers_count(self, value, expected) -> None:
+        assert token_count(value) == expected
+
+
+class TestApplyLlmUsage:
+    def test_accumulates_and_keeps_the_first_identity(self, run) -> None:
+        apply_llm_usage(run, provider="openai", model="m1", prompt_tokens=10, completion_tokens=2)
+        apply_llm_usage(run, provider="anthropic", model="m2", prompt_tokens=5, completion_tokens=1)
+
+        assert (run.provider, run.model) == ("openai", "m1")
+        assert (run.total_prompt_tokens, run.total_completion_tokens) == (15, 3)
+
+    def test_unknown_provider_is_ignored(self, run) -> None:
+        apply_llm_usage(run, provider="unknown", model=None)
+        assert run.provider is None
+        assert run.model is None
+
+
+class TestRecordToolResult:
+    def result(self, **extra) -> ToolResultInput:
+        return ToolResultInput(call_id="c1", name="search", step_id="s1", status="succeeded", args={"q": "x"}, **extra)
+
+    def test_reported_times_stamp_both_events(self, session, run) -> None:
+        end = START + timedelta(seconds=3)
+        record_tool_result(session, run, self.result(duration_ms=3000), capture_full=True, started_at=START, ended_at=end)
+
+        started, completed = [e for e in events_of(session, run) if e.type.startswith("tool.")]
+        assert (as_utc(started.timestamp), as_utc(completed.timestamp)) == (START, end)
+        assert completed.duration_ms == 3000
+        assert run.tool_count == 1
+        assert run.error_count == 0
+
+    def test_a_failed_result_counts_an_error(self, session, run) -> None:
+        failed = ToolResultInput(call_id="c1", name="search", step_id="s1", status="failed", error_code="Boom", error_summary="no")
+        record_tool_result(session, run, failed, capture_full=False)
+
+        assert (run.tool_count, run.error_count) == (1, 1)
+        assert [e.type for e in events_of(session, run)] == ["tool.started", "tool.failed"]
+        assert all(e.payload_full is None for e in events_of(session, run))
+
+
+class TestRunEnd:
+    def test_complete_run_sets_status_summary_and_end_time(self, session, run) -> None:
+        derivation = complete_run(session, run, {"answer": 42}, ended_at=START)
+
+        assert run.status == "completed"
+        assert as_utc(run.ended_at) == START
+        assert "42" in run.final_output_summary
+        assert "decisions" in derivation
+        assert events_of(session, run)[-1].type == "run.completed"
+
+    def test_fail_run_counts_the_error(self, session, run) -> None:
+        fail_run_with(session, run, "ValueError", "boom", ended_at=START)
+
+        assert (run.status, run.error_count, run.final_output_summary) == ("failed", 1, "boom")
+        last = events_of(session, run)[-1]
+        assert (last.type, last.error_code) == ("run.failed", "ValueError")

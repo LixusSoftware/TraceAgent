@@ -165,6 +165,8 @@ def _ingest_run(session: Session, run_id: str, spans: list[SpanRecord], capture_
     run = session.get(Run, run_id)
     if run is None:
         run = _create_run(session, run_id, fresh)
+    else:
+        _pull_back_start(session, run, min(s.start for s in fresh))
     was_open = run.status == "running"
 
     steps: list[_Step] = []
@@ -177,6 +179,7 @@ def _ingest_run(session: Session, run_id: str, spans: list[SpanRecord], capture_
     # Spans arrive when they end, in batches: replay them in the order they happened.
     for step in sorted(steps, key=lambda s: s.sort_key):
         step.apply()
+    _renumber_chronologically(session, run)
 
     _track_agent_calls(run, fresh)
     closing = _closing_span(run, fresh) if was_open else None
@@ -356,6 +359,47 @@ def _tool_steps(session: Session, run: Run, span: SpanRecord, capture_full: bool
         record_tool_result(session, run, tool_result, capture_full=capture_full, started_at=span.start, ended_at=span.end)
 
     return [_Step(span.start, record)]
+
+
+def _pull_back_start(session: Session, run: Run, earliest: datetime) -> None:
+    """Move the start of the run back when spans from before it arrive late.
+
+    The agent span, the first thing that happened, is exported last: the run was created
+    from whichever span ended first and has to start no later than the earliest span.
+    """
+    if run.run_metadata.get("source") != "otlp":
+        return
+    stored = run.started_at if run.started_at.tzinfo else run.started_at.replace(tzinfo=earliest.tzinfo)
+    if earliest >= stored:
+        return
+    run.started_at = earliest
+    started = session.scalars(select(Event).where(Event.run_id == run.id, Event.type == "run.started")).first()
+    if started is not None:
+        started.timestamp = earliest
+
+
+def _renumber_chronologically(session: Session, run: Run) -> None:
+    """Make ``seq`` follow the time events happened, not the time they arrived.
+
+    Spans are exported when they end, so an agent span (the first thing that happened)
+    arrives after everything it did, and a slow batch can arrive after a newer one. Everything
+    that reads a run in ``seq`` order (timeline, graph, decisions) needs the real order.
+    Only runs this receiver built are renumbered: a run it was merely attached to also has
+    events from other sources, stamped with a different clock.
+    """
+    if run.run_metadata.get("source") != "otlp":
+        return
+    events = list(session.scalars(select(Event).where(Event.run_id == run.id).order_by(Event.timestamp, Event.seq)))
+    if [event.seq for event in events] == sorted(event.seq for event in events):
+        return
+    # (run_id, seq) is unique: park every event on a free number first, then number them for good.
+    for index, event in enumerate(events, start=1):
+        event.seq = -index
+    session.flush()
+    for index, event in enumerate(events, start=1):
+        event.seq = index
+    run.last_event_seq = len(events)
+    session.flush()
 
 
 # ── Ending the run ───────────────────────────────────────────────────────────

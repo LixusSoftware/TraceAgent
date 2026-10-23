@@ -316,6 +316,56 @@ class TestRunEnd:
         assert [d["label"] for d in explanation["decisions"] if d["kind"] == "tool_choice"] == ["Selected get_weather"]
 
 
+class TestChronologicalOrder:
+    """Spans are exported when they end, so the agent span, which began first, arrives last."""
+
+    EXPECTED = [
+        "run.started", "chain.started", "llm.started", "llm.completed", "tool.started", "tool.succeeded",
+        "llm.started", "llm.completed", "chain.completed", "run.completed",
+    ]
+
+    def test_spans_delivered_one_at_a_time_children_first_are_renumbered_in_order(self, client) -> None:
+        spans = agent_spans()
+        for span in sorted(spans, key=lambda s: s.end):  # the order a SimpleSpanProcessor exports them
+            post(client, export(span))
+
+        run, events = load(client)
+        assert types(events) == self.EXPECTED
+        assert [e.seq for e in events] == list(range(1, len(events) + 1))
+        assert run.last_event_seq == len(events)
+        assert as_utc(run.started_at) == datetime.fromtimestamp(T0 / 1e9, tz=timezone.utc)
+        assert as_utc(events[0].timestamp) == as_utc(run.started_at)
+
+    def test_decisions_follow_the_real_order(self, client) -> None:
+        spans = agent_spans()
+        retry = Span("execute_tool get_weather", "6666666666666666", 12, 20, parent=AGENT, error=("builtins.ValueError", "busy"), **{
+            "gen_ai__operation__name": "execute_tool", "gen_ai__tool__name": "get_weather", "gen_ai__tool__call__id": "t0",
+            "gen_ai__tool__call__arguments": json.dumps({"city": "Madrid"}), "gen_ai__agent__call__id": CALL,
+        })
+        for span in sorted([*spans, retry], key=lambda s: s.end):
+            post(client, export(span))
+
+        explanation = client.get(f"/api/runs/{UUID(hex=TRACE)}/explanation").json()
+        kinds = [d["kind"] for d in explanation["decisions"]]
+        assert kinds.index("retry") < kinds.index("recovery")
+
+    def test_a_late_batch_with_earlier_spans_is_slotted_in_by_time(self, client) -> None:
+        spans = agent_spans()
+        post(client, export(spans[3], spans[0]))  # the second model call and the agent span first
+        post(client, export(spans[1], spans[2]))  # the earlier work arrives afterwards
+
+        _, events = load(client)
+        assert types(events) == self.EXPECTED
+
+    def test_a_run_that_was_only_attached_to_is_not_reordered(self, client) -> None:
+        run_id = client.post("/api/runs", json={"agent_name": "mine", "goal": "g"}).json()["run_id"]
+        post(client, export(*agent_spans(), resource={"trace_agent.run_id": run_id}))
+
+        _, events = load(client, run_id)
+        assert events[0].type == "run.started" and events[0].actor == "proxy"
+        assert [e.seq for e in events] == list(range(1, len(events) + 1))
+
+
 class TestIdempotency:
     def test_redelivering_a_batch_changes_nothing(self, client) -> None:
         body = export(*agent_spans())

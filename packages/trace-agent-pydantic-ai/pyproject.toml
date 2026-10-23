@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "trace-agent-pydantic-ai"
+version = "0.1.0"
+description = "Pydantic AI capability integration for TraceAgent."
+readme = "README.md"
+authors = [
+  { name = "Enrique Javier Villar Cea", email = "villarcea.enriquejavier@gmail.com" },
+  { name = "Javier Rodriguez Castellano", email = "javirodriguezcastellano@gmail.com" },
+]
+license = { text = "MIT" }
+keywords = ["agent", "observability", "tracing", "llm", "tools", "pydantic-ai"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+requires-python = ">=3.11"
+dependencies = [
+  "trace-agent-sdk",
+  "pydantic-ai-slim>=2.0.0,<3.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/LixusSoftware/TraceAgent"
+Repository = "https://github.com/LixusSoftware/TraceAgent"
+Issues = "https://github.com/LixusSoftware/TraceAgent/issues"
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3.2,<9.0.0",
+  "pytest-asyncio>=0.24.0",
+  "trace-agent-server",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"

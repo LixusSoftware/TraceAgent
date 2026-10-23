@@ -103,6 +103,9 @@ def main() -> int:
         lm_env = {**base_env, "TRACE_AGENT_TEST_MODEL": "mock-model"}
         results.append(run_example("lm_studio_agent.py", lm_env))
 
+        # pydantic_ai_agent.py (scripted model, no live LLM)
+        results.append(run_example("pydantic_ai_agent.py", base_env))
+
         # coding_agent_debugger_demo.py scenarios
         for scenario in ["correct_edit", "wrong_file", "retry_without_adaptation", "same_tools_different_artifact"]:
             print(f"\n=== Verifying coding_agent_debugger_demo.py --scenario {scenario} ===")

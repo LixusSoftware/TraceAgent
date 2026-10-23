@@ -29,10 +29,13 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Sync workspace
-        run: uv sync --extra dev --extra providers --extra langchain
+        run: uv sync --extra dev --extra providers --extra langchain --extra pydantic-ai
 
       - name: Run server tests
         run: uv run --package trace-agent-server pytest packages/trace-agent-server/tests -v --cov=trace_agent_server --cov-report=xml
 
       - name: Run langchain tests
         run: uv run --package trace-agent-langchain pytest packages/trace-agent-langchain/tests -v
+
+      - name: Run pydantic-ai tests
+        run: uv run --package trace-agent-pydantic-ai --extra dev pytest packages/trace-agent-pydantic-ai/tests -v

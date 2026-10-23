@@ -19,6 +19,7 @@ Compatible with modern agent frameworks such as **LangChain**, TraceAgent integr
 - [Instrumenting Your Agent](#instrumenting-your-agent)
   - [SDK](#sdk)
   - [LangChain](#langchain)
+  - [Pydantic AI](#pydantic-ai)
   - [Configuration](#configuration-environment-variables)
 - [Docker Images](#docker-images)
 - [Examples](#examples)
@@ -44,16 +45,18 @@ TraceAgent fills that gap with an **agent-first tracing specification** and a pu
 | **Real-time tracing** | Capture tool calls, file operations, shell commands, and artifacts as they happen. |
 | **Execution timeline** | Visualize agent behavior through interactive timelines and execution graphs. |
 | **LangChain integration** | Native callback handler for LangChain agents and chains, with zero boilerplate. |
+| **Pydantic AI integration** | Native capability for Pydantic AI 2.x agents, attached in a single line. |
 | **Self-hosted** | Full data ownership with a FastAPI backend and SQLite/PostgreSQL support. |
 
 ---
 
 ## Instrumenting Your Agent
 
-TraceAgent is organized into four packages. Click any name to open its full README:
+TraceAgent is organized into five packages. Click any name to open its full README:
 
 - [TraceAgent SDK](./packages/trace-agent-sdk/README.md)
 - [TraceAgent LangChain Integration](./packages/trace-agent-langchain/README.md)
+- [TraceAgent Pydantic AI Integration](./packages/trace-agent-pydantic-ai/README.md)
 - [TraceAgent Server](./packages/trace-agent-server/README.md)
 - [TraceAgent UI](./packages/trace-agent-ui/README.md)
 
@@ -113,6 +116,18 @@ agent.invoke({"input": "..."}, callbacks=[TraceAgentLangChainCallback(run)])
 
 ---
 
+### Pydantic AI
+
+Add the capability to any Pydantic AI (2.x) agent - runs, model requests, and tool calls are captured automatically. See the [full Pydantic AI README](./packages/trace-agent-pydantic-ai/README.md) for configuration options.
+
+```python
+from pydantic_ai import Agent
+
+agent = Agent("openai:gpt-4o", capabilities=[run.as_pydantic_ai_capability()])
+```
+
+---
+
 ### Configuration
 
 TraceAgent's behavior can be customized via environment variables. 
@@ -167,6 +182,15 @@ uv run examples/langchain_agent.py
 ```
 
 This example expects an OpenAI-compatible endpoint such as LM Studio and uses the following environment variables: `TRACE_AGENT_BASE_URL`, `OPENAI_BASE_URL`, and `OPENAI_API_KEY`.
+
+### `examples/pydantic_ai_agent.py`
+
+Pydantic AI integration example. It attaches the TraceAgent capability to a Pydantic AI agent so runs, model requests, and tool calls are traced automatically. It uses a scripted model, so it needs no API key.
+
+```bash
+uv sync --extra dev --extra pydantic-ai
+uv run examples/pydantic_ai_agent.py
+```
 
 ### `examples/lm_studio_agent.py`
 
@@ -231,6 +255,7 @@ Each TraceAgent package can be installed independently via pip:
 ```bash
 pip install trace-agent-sdk
 pip install trace-agent-langchain
+pip install trace-agent-pydantic-ai
 pip install trace-agent-server
 pip install trace-agent-ui
 ```
@@ -238,7 +263,7 @@ pip install trace-agent-ui
 Or install all packages at once:
  
 ```bash
-pip install trace-agent-sdk trace-agent-langchain trace-agent-server trace-agent-ui
+pip install trace-agent-sdk trace-agent-langchain trace-agent-pydantic-ai trace-agent-server trace-agent-ui
 ```
 
 ## Getting Help

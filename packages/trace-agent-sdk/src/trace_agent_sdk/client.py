@@ -469,6 +469,30 @@ class RunSession:
             record_retriever_events=record_retriever_events,
         )
 
+    def as_pydantic_ai_capability(
+        self,
+        *,
+        record_model_events: bool = True,
+        record_tool_events: bool = True,
+        record_node_events: bool = False,
+        redact_fields: list[str] | None = None,
+    ) -> Any:
+        """Return a Pydantic AI capability bound to this run.
+
+        Usage:
+            agent = Agent("openai:gpt-4o", capabilities=[run.as_pydantic_ai_capability()])
+            agent.run_sync("...")
+        """
+        from trace_agent_pydantic_ai import TraceAgentCapability
+
+        return TraceAgentCapability(
+            self,
+            record_model_events=record_model_events,
+            record_tool_events=record_tool_events,
+            record_node_events=record_node_events,
+            redact_fields=redact_fields or [],
+        )
+
     def _execute_tool(self, call: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
         binding = self.tools.get(call["name"])
         if binding is None:

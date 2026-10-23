@@ -53,6 +53,9 @@ providers = [
 langchain = [
   "trace-agent-langchain",
 ]
+pydantic-ai = [
+  "trace-agent-pydantic-ai",
+]
 
 [project.scripts]
 trace-agent-server = "trace_agent_server.cli:main"

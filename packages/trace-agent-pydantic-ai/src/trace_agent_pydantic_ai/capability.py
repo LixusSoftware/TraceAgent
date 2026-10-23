@@ -15,9 +15,10 @@ Usage:
 from __future__ import annotations
 
 import asyncio
+import queue
+import sys
 import threading
 import time
-import traceback
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import Any
@@ -62,8 +63,11 @@ class TraceAgentCapability(AbstractCapability[Any]):
     """Record a Pydantic AI agent run as TraceAgent observations.
 
     The capability wraps the run, model request, tool execution and (optionally)
-    graph node lifecycles.  If the backend is unreachable it logs a traceback
-    but **never** crashes the agent.
+    graph node lifecycles.  Events are delivered by a background thread, so a slow
+    or unreachable backend never stalls or crashes the agent: after a failed
+    delivery, events are dropped for ``failure_cooldown`` seconds, and the end of
+    the outermost run waits at most ``flush_timeout`` seconds for pending events,
+    so that ``run.finish()`` arrives after them.
     """
 
     run_session: Any = None
@@ -71,27 +75,65 @@ class TraceAgentCapability(AbstractCapability[Any]):
     record_tool_events: bool = True
     record_node_events: bool = False
     redact_fields: list[str] = field(default_factory=list)
-    # The backend numbers events per run without locking, so concurrent posts
-    # (e.g. parallel tools) would collide; sends are serialized instead.
-    _send_lock: threading.Lock = field(default_factory=threading.Lock, init=False, repr=False, compare=False)
+    failure_cooldown: float = 30.0
+    flush_timeout: float = 5.0
+    # One consumer keeps events in order. That also matters because the backend
+    # numbers events per run without locking, so concurrent posts would collide.
+    _queue: queue.Queue = field(default_factory=lambda: queue.Queue(maxsize=1000), init=False, repr=False, compare=False)
+    _worker: threading.Thread | None = field(default=None, init=False, repr=False, compare=False)
+    _worker_lock: threading.Lock = field(default_factory=threading.Lock, init=False, repr=False, compare=False)
+    _paused_until: float = field(default=0.0, init=False, repr=False, compare=False)
 
-    # ── Helpers ─────────────────────────────────────────────────────────────
+    # ── Delivery ────────────────────────────────────────────────────────────
 
-    def _post_sync(self, path: str, payload: dict[str, Any]) -> None:
-        """Send a payload to the TraceAgent backend, swallowing any error."""
+    def _enqueue(self, path: str, payload: dict[str, Any]) -> None:
+        """Queue a payload for the backend; never blocks and never raises."""
+        self._ensure_worker()
         try:
-            with self._send_lock:
-                self.run_session.client._request(
-                    "POST",
-                    f"/api/runs/{self.run_session.run_id}/{path}",
-                    payload,
-                )
-        except Exception:
-            traceback.print_exc()
+            self._queue.put_nowait((path, payload, None))
+        except queue.Full:
+            pass  # Tracing is best effort: dropping beats stalling the agent.
 
-    async def _post(self, path: str, payload: dict[str, Any]) -> None:
-        # Off the event loop so a slow backend never stalls the agent.
-        await asyncio.to_thread(self._post_sync, path, payload)
+    def _ensure_worker(self) -> None:
+        with self._worker_lock:
+            if self._worker is None or not self._worker.is_alive():
+                self._worker = threading.Thread(target=self._deliver_forever, name="trace-agent-pydantic-ai", daemon=True)
+                self._worker.start()
+
+    def _deliver_forever(self) -> None:
+        while True:
+            path, payload, flushed = self._queue.get()
+            try:
+                if flushed is not None:
+                    flushed.set()
+                elif time.monotonic() >= self._paused_until:
+                    self._deliver(path, payload)
+            finally:
+                self._queue.task_done()
+
+    def _deliver(self, path: str, payload: dict[str, Any]) -> None:
+        try:
+            self.run_session.client._request("POST", f"/api/runs/{self.run_session.run_id}/{path}", payload)
+        except Exception as exc:
+            self._paused_until = time.monotonic() + self.failure_cooldown
+            print(
+                f"[trace-agent] could not deliver trace data ({type(exc).__name__}); "
+                f"pausing delivery for {self.failure_cooldown:g}s. The agent is not affected.",
+                file=sys.stderr,
+            )
+
+    async def _flush(self) -> None:
+        """Wait, for a bounded time, until everything queued so far was delivered."""
+        flushed = threading.Event()
+        try:
+            self._ensure_worker()
+            self._queue.put_nowait((None, None, flushed))
+        except queue.Full:
+            return
+        try:
+            await asyncio.to_thread(flushed.wait, self.flush_timeout)
+        except BaseException:  # noqa: BLE001 - never let tracing mask the run's own outcome
+            pass
 
     def _observation(
         self,
@@ -125,7 +167,7 @@ class TraceAgentCapability(AbstractCapability[Any]):
             "pydantic_run_id": getattr(ctx, "run_id", None),
             "conversation_id": getattr(ctx, "conversation_id", None),
         }
-        await self._post(
+        self._enqueue(
             "observations",
             self._observation(
                 "chain_step",
@@ -141,8 +183,7 @@ class TraceAgentCapability(AbstractCapability[Any]):
             result = await handler()
         except BaseException as exc:
             _CURRENT_STEP.reset(token)
-            # Sync post: stays safe when the run is being cancelled.
-            self._post_sync(
+            self._enqueue(
                 "observations",
                 self._observation(
                     "chain_step",
@@ -155,10 +196,12 @@ class TraceAgentCapability(AbstractCapability[Any]):
                     metadata=base_metadata,
                 ),
             )
+            if parent_step_id is None:
+                await self._flush()
             raise
         _CURRENT_STEP.reset(token)
         output = getattr(result, "output", None)
-        await self._post(
+        self._enqueue(
             "observations",
             self._observation(
                 "chain_step",
@@ -175,6 +218,10 @@ class TraceAgentCapability(AbstractCapability[Any]):
                 },
             ),
         )
+        # The outermost run waits (bounded) for its events, so that a following
+        # run.finish() reaches the backend after them.
+        if parent_step_id is None:
+            await self._flush()
         return result
 
     # ── Model request lifecycle ─────────────────────────────────────────────
@@ -191,7 +238,7 @@ class TraceAgentCapability(AbstractCapability[Any]):
             "message_count": len(getattr(request_context, "messages", None) or []),
             "run_step": getattr(ctx, "run_step", None),
         }
-        await self._post(
+        self._enqueue(
             "observations",
             self._observation(
                 "llm_call",
@@ -205,7 +252,7 @@ class TraceAgentCapability(AbstractCapability[Any]):
         try:
             response = await handler(request_context)
         except BaseException as exc:
-            self._post_sync(
+            self._enqueue(
                 "observations",
                 self._observation(
                     "llm_call",
@@ -223,7 +270,7 @@ class TraceAgentCapability(AbstractCapability[Any]):
         tool_names = [
             part.tool_name for part in response.parts if getattr(part, "part_kind", None) == "tool-call"
         ]
-        await self._post(
+        self._enqueue(
             "observations",
             self._observation(
                 "llm_call",
@@ -268,7 +315,7 @@ class TraceAgentCapability(AbstractCapability[Any]):
             # Deferral is control flow, not a failure: the tool runs again later.
             raise
         except BaseException as exc:
-            self._post_sync(
+            self._enqueue(
                 "tool-results",
                 {
                     "results": [
@@ -284,7 +331,7 @@ class TraceAgentCapability(AbstractCapability[Any]):
                 },
             )
             raise
-        await self._post(
+        self._enqueue(
             "tool-results",
             {
                 "results": [
@@ -310,7 +357,7 @@ class TraceAgentCapability(AbstractCapability[Any]):
         parent_step_id = _CURRENT_STEP.get()
         node_name = node.__class__.__name__
         started_at = time.perf_counter()
-        await self._post(
+        self._enqueue(
             "observations",
             self._observation(
                 "agent_action",
@@ -324,7 +371,7 @@ class TraceAgentCapability(AbstractCapability[Any]):
         try:
             result = await handler(node)
         except BaseException as exc:
-            self._post_sync(
+            self._enqueue(
                 "observations",
                 self._observation(
                     "agent_action",
@@ -338,7 +385,7 @@ class TraceAgentCapability(AbstractCapability[Any]):
                 ),
             )
             raise
-        await self._post(
+        self._enqueue(
             "observations",
             self._observation(
                 "agent_action",

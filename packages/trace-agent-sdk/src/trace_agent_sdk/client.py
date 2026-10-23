@@ -476,6 +476,8 @@ class RunSession:
         record_tool_events: bool = True,
         record_node_events: bool = False,
         redact_fields: list[str] | None = None,
+        failure_cooldown: float = 30.0,
+        flush_timeout: float = 5.0,
     ) -> Any:
         """Return a Pydantic AI capability bound to this run.
 
@@ -491,6 +493,8 @@ class RunSession:
             record_tool_events=record_tool_events,
             record_node_events=record_node_events,
             redact_fields=redact_fields or [],
+            failure_cooldown=failure_cooldown,
+            flush_timeout=flush_timeout,
         )
 
     def _execute_tool(self, call: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:

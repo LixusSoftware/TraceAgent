@@ -30,7 +30,7 @@ result = agent.run_sync("hello")
 run.finish(result.output)
 ```
 
-The capability never breaks the agent: if the backend is unreachable the error is printed and the run continues.
+The capability never breaks or slows the agent. Events are delivered by a background thread; if the backend is unreachable or hangs, a one-line warning is printed, trace delivery pauses for a while, and the agent keeps running. Events produced while paused are dropped. The end of the outermost run waits a few seconds at most for pending events, so `run.finish()` is delivered after them.
 
 Pydantic AI prints a startup banner suggesting Logfire while its own observability is off. It is unrelated to TraceAgent and can be silenced with `PYDANTIC_AI_NO_BANNER=1`.
 
@@ -44,6 +44,8 @@ Pydantic AI prints a startup banner suggesting Logfire while its own observabili
 | `record_tool_events` | `True` | Record each tool execution (args, output summary, duration, errors) |
 | `record_node_events` | `False` | Record every agent graph node |
 | `redact_fields` | `[]` | Argument / output keys replaced with `[redacted]` |
+| `failure_cooldown` | `30.0` | Seconds to stop sending (and drop events) after a failed delivery. `0` retries every event |
+| `flush_timeout` | `5.0` | Maximum seconds the end of the outermost run waits for pending events |
 
 ## License
 

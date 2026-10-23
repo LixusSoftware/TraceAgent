@@ -259,6 +259,50 @@ class TestBackendFailures:
         assert result.output
         assert run_session.client._request.called
 
+    async def test_a_slow_backend_does_not_stall_the_agent(self, run_session) -> None:
+        def slow_request(method: str, path: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+            time.sleep(0.3)
+            return {"status": "ok"}
+
+        run_session.client._request = MagicMock(side_effect=slow_request)
+        agent = make_agent(TraceAgentCapability(run_session, flush_timeout=0.1))
+
+        started = time.perf_counter()
+        await agent.run("weather please")
+        elapsed = time.perf_counter() - started
+
+        # Delivering every event serially would take at least 7 * 0.3s.
+        assert elapsed < 1.2
+
+    async def test_failed_delivery_pauses_sending_and_warns_once(self, run_session, capsys) -> None:
+        run_session.client._request = MagicMock(side_effect=ConnectionError("backend down"))
+        agent = make_agent(TraceAgentCapability(run_session, failure_cooldown=60))
+
+        await agent.run("weather please")
+        await agent.run("weather again")
+
+        assert run_session.client._request.call_count == 1
+        err = capsys.readouterr().err
+        assert err.count("pausing delivery") == 1
+        assert "ConnectionError" in err
+        assert "Traceback" not in err
+
+    async def test_zero_cooldown_retries_every_event(self, run_session) -> None:
+        run_session.client._request = MagicMock(side_effect=ConnectionError("backend down"))
+        agent = make_agent(TraceAgentCapability(run_session, failure_cooldown=0))
+
+        await agent.run("weather please")
+
+        assert run_session.client._request.call_count > 1
+
+    async def test_everything_is_delivered_when_the_run_returns(self, run_session, posts) -> None:
+        agent = make_agent(TraceAgentCapability(run_session))
+        await agent.run("weather please")
+
+        # The caller may call run.finish() right away: nothing can still be queued.
+        assert observations(posts, "chain_step")[-1]["status"] == "succeeded"
+        assert len(tool_results(posts)) == 1
+
     async def test_nested_run_is_child_of_outer_step(self, run_session, posts) -> None:
         capability = TraceAgentCapability(run_session)
         inner = Agent(FunctionModel(lambda m, i: ModelResponse(parts=[TextPart("inner")])), name="inner", capabilities=[capability])

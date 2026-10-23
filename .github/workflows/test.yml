@@ -31,6 +31,9 @@ jobs:
       - name: Sync workspace
         run: uv sync --extra dev --extra providers --extra langchain --extra pydantic-ai
 
+      - name: Run sdk tests
+        run: uv run --package trace-agent-sdk pytest packages/trace-agent-sdk/tests -v
+
       - name: Run server tests
         run: uv run --package trace-agent-server pytest packages/trace-agent-server/tests -v --cov=trace_agent_server --cov-report=xml
 

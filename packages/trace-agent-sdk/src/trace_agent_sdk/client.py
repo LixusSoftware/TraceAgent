@@ -8,7 +8,7 @@ import subprocess
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, get_type_hints
 from uuid import uuid4
 
 import httpx
@@ -548,10 +548,15 @@ class RunSession:
 
     def _build_input_schema(self, func: Callable[..., Any]) -> dict[str, Any]:
         signature = inspect.signature(func)
+        try:
+            # Resolves postponed annotations ("int" under `from __future__ import annotations`).
+            hints = get_type_hints(func)
+        except Exception:
+            hints = {}
         properties: dict[str, Any] = {}
         required: list[str] = []
         for parameter_name, parameter in signature.parameters.items():
-            annotation = parameter.annotation if parameter.annotation is not inspect._empty else str
+            annotation = hints.get(parameter_name, parameter.annotation if parameter.annotation is not inspect._empty else str)
             properties[parameter_name] = {"type": TYPE_MAP.get(annotation, "string")}
             if parameter.default is inspect._empty:
                 required.append(parameter_name)

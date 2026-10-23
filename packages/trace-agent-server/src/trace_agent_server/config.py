@@ -43,6 +43,8 @@ class Settings(BaseSettings):
     audit_otel_exporter_endpoint: str | None = None
     audit_otel_exporter_protocol: str = "grpc"
     capture_full_payloads: bool = True
+    otlp_enabled: bool = True
+    otlp_max_body_bytes: int = 10_000_000
 
     model_config = SettingsConfigDict(
         env_prefix="TRACE_AGENT_",

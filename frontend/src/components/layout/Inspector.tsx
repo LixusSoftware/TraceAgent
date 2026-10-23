@@ -1,4 +1,4 @@
-import { Calendar, Clock, Hash, Zap, Box, GitBranch } from "lucide-react"
+import { Calendar, Clock, Hash, Zap } from "lucide-react"
 import type { RunOverview, EventItem, GraphNode } from "../../types"
 import { formatDuration, formatWhen } from "../../lib/utils"
 import { JsonViewer } from "../JsonViewer"

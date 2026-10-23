@@ -71,25 +71,22 @@ function buildFlowEdges(edges: GraphEdge[]): Edge[] {
 }
 
 export function ExecutionGraph({ runId, view = "execution", onSelectNode }: ExecutionGraphProps) {
-  const [graph, setGraph] = useState<GraphResponse | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loaded, setLoaded] = useState<{ key: string; data: GraphResponse | null } | null>(null);
   const [showMinimap, setShowMinimap] = useState(false);
+  // Loading and the graph itself are derived from which run/view the data was loaded for,
+  // instead of toggling state from inside the effect.
+  const key = runId ? `${runId}|${view}` : null;
+  const graph = loaded?.key === key ? loaded.data : null;
+  const loading = key !== null && loaded?.key !== key;
 
   useEffect(() => {
-    if (!runId) {
-      setGraph(null);
-      return;
-    }
+    if (!key || !runId) return;
     let isCurrent = true;
-    setLoading(true);
     api.getGraph(runId, view)
-      .then((data) => {
-        if (isCurrent) setGraph(data);
-      })
-      .catch(() => { if (isCurrent) setGraph(null); })
-      .finally(() => { if (isCurrent) setLoading(false); });
+      .then((data) => { if (isCurrent) setLoaded({ key, data }); })
+      .catch(() => { if (isCurrent) setLoaded({ key, data: null }); });
     return () => { isCurrent = false; };
-  }, [runId, view]);
+  }, [key, runId, view]);
 
   const nodes = useMemo(() => (graph ? buildFlowNodes(graph.nodes) : []), [graph]);
   const edges = useMemo(() => (graph ? buildFlowEdges(graph.edges) : []), [graph]);

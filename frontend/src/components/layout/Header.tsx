@@ -1,4 +1,4 @@
-import { Activity, BarChart3, Terminal, GitCompare, Sun, Moon, PanelLeft, PanelBottom, PanelRight } from "lucide-react"
+import { BarChart3, Terminal, GitCompare, Sun, Moon, PanelLeft, PanelBottom, PanelRight } from "lucide-react"
 import { useTheme } from "next-themes"
 import type { RunListItem } from "../../types"
 

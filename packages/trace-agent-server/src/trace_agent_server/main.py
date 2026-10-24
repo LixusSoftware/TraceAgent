@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from trace_agent_server.api.otlp import router as otlp_router
 from trace_agent_server.api.runs import router as runs_router
 from trace_agent_server.config import Settings, get_settings
 from trace_agent_server.db import Base, create_session_factory
@@ -67,6 +68,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {"status": "ok"}
 
     app.include_router(runs_router)
+    app.include_router(otlp_router)
     return app
 
 

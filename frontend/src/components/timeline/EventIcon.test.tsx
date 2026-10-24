@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { render, screen } from "@testing-library/react";
-import { EventIcon, getEventColor } from "./EventIcon";
+import { render } from "@testing-library/react";
+import { EventIcon } from "./EventIcon";
+import { getEventColor } from "./eventColor";
 
 describe("EventIcon", () => {
   it("renders Flag for run.started", () => {

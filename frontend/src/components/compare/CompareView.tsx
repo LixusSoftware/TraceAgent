@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { GitCompare, ArrowRight, AlertCircle, CheckCircle2, Minus, ChevronDown, ChevronRight, Circle } from "lucide-react";
 import type { RunListItem, RunCompareResponse, DiffPair } from "../../types";
 import { api } from "../../api";
-import { formatDuration, formatWhen } from "../../lib/utils";
+import { formatDuration } from "../../lib/utils";
 import { JsonViewer } from "../JsonViewer";
 
 interface CompareViewProps {
@@ -10,40 +10,30 @@ interface CompareViewProps {
 }
 
 export function CompareView({ runs }: CompareViewProps) {
-  const [leftRunId, setLeftRunId] = useState<string>("");
-  const [rightRunId, setRightRunId] = useState<string>("");
-  const [result, setResult] = useState<RunCompareResponse | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [chosenLeftId, setLeftRunId] = useState<string>("");
+  const [chosenRightId, setRightRunId] = useState<string>("");
+  const [compared, setCompared] = useState<{ key: string; data: RunCompareResponse | null; error: string | null } | null>(null);
   const [expandedDiffs, setExpandedDiffs] = useState<Set<string>>(new Set());
 
-  useEffect(() => {
-    if (runs.length >= 2 && !leftRunId && !rightRunId) {
-      setLeftRunId(runs[0].id);
-      setRightRunId(runs[1].id);
-    }
-  }, [runs, leftRunId, rightRunId]);
-
-  const handleCompare = async () => {
-    if (!leftRunId || !rightRunId || leftRunId === rightRunId) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await api.compareRuns(leftRunId, rightRunId);
-      setResult(data);
-    } catch (e) {
-      setError("Failed to compare runs");
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Until the user picks runs, the two most recent ones are compared.
+  const leftRunId = chosenLeftId || (runs.length >= 2 ? runs[0].id : "");
+  const rightRunId = chosenRightId || (runs.length >= 2 ? runs[1].id : "");
+  const key = leftRunId && rightRunId && leftRunId !== rightRunId ? `${leftRunId}|${rightRunId}` : null;
 
   useEffect(() => {
-    if (leftRunId && rightRunId && leftRunId !== rightRunId) {
-      handleCompare();
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [leftRunId, rightRunId]);
+    if (!key) return;
+    let isCurrent = true;
+    api.compareRuns(leftRunId, rightRunId)
+      .then((data) => { if (isCurrent) setCompared({ key, data, error: null }); })
+      .catch(() => { if (isCurrent) setCompared({ key, data: null, error: "Failed to compare runs" }); });
+    return () => { isCurrent = false; };
+  }, [key, leftRunId, rightRunId]);
+
+  // The outcome only counts for the pair of runs it was loaded for.
+  const outcome = compared?.key === key ? compared : null;
+  const loading = key !== null && outcome === null;
+  const result = outcome?.data ?? null;
+  const error = outcome?.error ?? null;
 
   const toggleDiff = (key: string) => {
     setExpandedDiffs((prev) => {

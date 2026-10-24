@@ -3,6 +3,9 @@ import { ChevronDown, ChevronRight, Clock, AlertCircle, CheckCircle2, Loader2 } 
 import type { TimelineResponse, EventItem, TimelineGroup } from "../../types"
 import { EventIcon } from "./EventIcon"
 import { formatDuration, formatWhen } from "../../lib/utils"
+import { groupTitle } from "../../lib/humanize"
+
+type TimelineRow = { seq: number; event: EventItem } | { seq: number; child: TimelineGroup }
 
 interface TimelineProps {
   timeline: TimelineResponse | null
@@ -14,15 +17,23 @@ interface TimelineProps {
 export function Timeline({ timeline, selectedEvent, onSelectEvent, isLoading }: TimelineProps) {
   const [expandedSteps, setExpandedSteps] = useState<Set<string>>(new Set())
 
-  const tree = useMemo(() => {
-    if (!timeline) return []
-    const byParent = new Map<string | null, TimelineGroup[]>()
+  const { roots, childrenByParent } = useMemo(() => {
+    const roots: TimelineGroup[] = []
+    const childrenByParent = new Map<string, TimelineGroup[]>()
+    if (!timeline) return { roots, childrenByParent }
+    const known = new Set(timeline.groups.map((group) => group.step_id))
     for (const group of timeline.groups) {
-      const key = group.parent_step_id ?? null
-      if (!byParent.has(key)) byParent.set(key, [])
-      byParent.get(key)!.push(group)
+      const parent = group.parent_step_id
+      // A group whose parent is not in the timeline is shown at the top level, never dropped.
+      if (parent && parent !== group.step_id && known.has(parent)) {
+        const siblings = childrenByParent.get(parent) ?? []
+        siblings.push(group)
+        childrenByParent.set(parent, siblings)
+      } else {
+        roots.push(group)
+      }
     }
-    return byParent.get(null) ?? []
+    return { roots, childrenByParent }
   }, [timeline])
 
   const totalDuration = useMemo(() => {
@@ -72,10 +83,11 @@ export function Timeline({ timeline, selectedEvent, onSelectEvent, isLoading }: 
       </div>
 
       <div className="space-y-0.5">
-        {tree.map((group) => (
+        {roots.map((group) => (
           <TimelineGroupNode
             key={group.step_id}
             group={group}
+            childrenByParent={childrenByParent}
             depth={0}
             expandedSteps={expandedSteps}
             onToggle={toggleStep}
@@ -91,6 +103,7 @@ export function Timeline({ timeline, selectedEvent, onSelectEvent, isLoading }: 
 
 function TimelineGroupNode({
   group,
+  childrenByParent,
   depth,
   expandedSteps,
   onToggle,
@@ -99,6 +112,7 @@ function TimelineGroupNode({
   totalDuration,
 }: {
   group: TimelineGroup
+  childrenByParent: Map<string, TimelineGroup[]>
   depth: number
   expandedSteps: Set<string>
   onToggle: (id: string) => void
@@ -107,7 +121,13 @@ function TimelineGroupNode({
   totalDuration: number
 }) {
   const isExpanded = expandedSteps.has(group.step_id)
-  const hasChildren = group.events.length > 1 || group.event_count > group.events.length
+  const childGroups = childrenByParent.get(group.step_id) ?? []
+  const hasChildren = group.events.length > 1 || group.event_count > group.events.length || childGroups.length > 0
+  // Own events and child groups interleaved in the order they happened.
+  const rows: TimelineRow[] = [
+    ...group.events.map((event): TimelineRow => ({ seq: event.seq, event })),
+    ...childGroups.map((child): TimelineRow => ({ seq: child.events[0]?.seq ?? 0, child })),
+  ].sort((a, b) => a.seq - b.seq)
   const pct = totalDuration > 0 && group.duration_ms !== null
     ? Math.max(2, (group.duration_ms / totalDuration) * 100)
     : 0
@@ -137,7 +157,7 @@ function TimelineGroupNode({
         <EventIcon type={group.events[0]?.type ?? "unknown"} />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <span className="text-xs font-medium truncate">{group.label}</span>
+            <span className="text-xs font-medium truncate">{groupTitle(group)}</span>
             <StatusBadge status={group.status} />
           </div>
           {pct > 0 && (
@@ -169,15 +189,29 @@ function TimelineGroupNode({
               style={{ left: `${depth * 16 + 18}px` }}
             />
           )}
-          {group.events.map((event) => (
-            <TimelineEventRow
-              key={event.id}
-              event={event}
-              depth={depth + 1}
-              isSelected={selectedEvent?.id === event.id}
-              onSelect={() => onSelectEvent(event)}
-            />
-          ))}
+          {rows.map((row) =>
+            "child" in row ? (
+              <TimelineGroupNode
+                key={row.child.step_id}
+                group={row.child}
+                childrenByParent={childrenByParent}
+                depth={depth + 1}
+                expandedSteps={expandedSteps}
+                onToggle={onToggle}
+                selectedEvent={selectedEvent}
+                onSelectEvent={onSelectEvent}
+                totalDuration={totalDuration}
+              />
+            ) : (
+              <TimelineEventRow
+                key={row.event.id}
+                event={row.event}
+                depth={depth + 1}
+                isSelected={selectedEvent?.id === row.event.id}
+                onSelect={() => onSelectEvent(row.event)}
+              />
+            ),
+          )}
         </div>
       )}
     </div>

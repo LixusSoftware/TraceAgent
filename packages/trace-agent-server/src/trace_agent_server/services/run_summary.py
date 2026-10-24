@@ -3,6 +3,18 @@ from __future__ import annotations
 from typing import Any
 
 from trace_agent_server.models import Event, Run
+from trace_agent_server.services.run_lifecycle import token_count
+
+
+def event_total_tokens(event: Event) -> int:
+    """Tokens one event accounts for: a native model response or a framework's finished model call."""
+    if event.type == "model.responded":
+        return int((event.event_metadata.get("usage") or {}).get("total_tokens") or 0)
+    if event.type == "llm.completed":
+        metadata = event.event_metadata
+        reported = token_count(metadata.get("total_tokens"))
+        return reported or token_count(metadata.get("prompt_tokens")) + token_count(metadata.get("completion_tokens"))
+    return 0
 
 
 STATE_BY_EVENT_TYPE = {
@@ -63,6 +75,14 @@ def build_execution_metadata(run: Run, events: list[Event]) -> dict[str, Any]:
 
     token_usage = _token_usage_template()
     for event in events:
+        if event.type == "llm.completed":
+            # A framework integration reports usage per model call, not through /turns.
+            prompt = token_count(event.event_metadata.get("prompt_tokens"))
+            completion = token_count(event.event_metadata.get("completion_tokens"))
+            token_usage["prompt_tokens"] += prompt
+            token_usage["completion_tokens"] += completion
+            token_usage["total_tokens"] += event_total_tokens(event)
+            continue
         if event.type != "model.responded":
             continue
         usage = event.event_metadata.get("usage", {})
@@ -82,8 +102,8 @@ def build_execution_metadata(run: Run, events: list[Event]) -> dict[str, Any]:
     return {
         "duration_ms": duration_ms,
         "total_event_count": len(events),
-        "model_turn_count": sum(1 for event in events if event.type == "model.requested"),
-        "assistant_turn_count": sum(1 for event in events if event.type == "model.responded"),
+        "model_turn_count": sum(1 for event in events if event.type in {"model.requested", "llm.started"}),
+        "assistant_turn_count": sum(1 for event in events if event.type in {"model.responded", "llm.completed"}),
         "tool_request_count": sum(1 for event in events if event.type == "tool.requested"),
         "tool_success_count": sum(1 for event in events if event.type == "tool.succeeded"),
         "tool_failure_count": sum(1 for event in events if event.type == "tool.failed"),
@@ -139,12 +159,16 @@ def build_timeline_groups(events: list[Event]) -> list[dict[str, Any]]:
                 "event_count": len(group_events),
                 "started_at": group_events[0].timestamp,
                 "ended_at": group_events[-1].timestamp,
-                "duration_ms": max(
+                # The reported duration wins: events of one step are stored together,
+                # so their timestamps only measure the time it took to record them.
+                "duration_ms": last_event.duration_ms
+                if last_event.duration_ms is not None
+                else max(
                     0,
                     int((group_events[-1].timestamp - group_events[0].timestamp).total_seconds() * 1000),
                 )
                 if len(group_events) > 1
-                else group_events[-1].duration_ms,
+                else None,
                 "events": group_events,
             }
         )

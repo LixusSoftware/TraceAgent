@@ -63,14 +63,16 @@ def record_event(
     payload_full: dict[str, Any] | None = None,
     metadata: dict[str, Any] | None = None,
     turn_id: str | None = None,
+    timestamp: datetime | None = None,
 ) -> Event:
+    """Record an event; ``timestamp`` overrides "now" for sources that report when it happened."""
     run.last_event_seq += 1
     run.updated_at = utcnow()
     event = Event(
         run_id=run.id,
         turn_id=turn_id,
         seq=run.last_event_seq,
-        timestamp=utcnow(),
+        timestamp=timestamp or utcnow(),
         step_id=step_id,
         parent_step_id=parent_step_id,
         actor=actor,

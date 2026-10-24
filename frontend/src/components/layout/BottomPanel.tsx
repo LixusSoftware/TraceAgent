@@ -14,37 +14,30 @@ interface BottomPanelProps {
 }
 
 export function BottomPanel({ selectedRunId, overview, activeTab, onTabChange }: BottomPanelProps) {
-  const [audit, setAudit] = useState<AuditReport | null>(null);
-  const [auditLoading, setAuditLoading] = useState(false);
-  const [artifacts, setArtifacts] = useState<Artifact[]>([]);
-  const [artifactsLoading, setArtifactsLoading] = useState(false);
+  const [loadedAudit, setLoadedAudit] = useState<{ runId: string; data: AuditReport | null } | null>(null);
+  const [loadedArtifacts, setLoadedArtifacts] = useState<{ runId: string; data: Artifact[] } | null>(null);
+  // What is shown, and whether it is still loading, derives from which run the data was
+  // loaded for, instead of toggling state from inside the effects.
+  const audit = loadedAudit?.runId === selectedRunId ? loadedAudit.data : null;
+  const auditLoading = selectedRunId !== null && loadedAudit?.runId !== selectedRunId;
+  const artifacts = loadedArtifacts?.runId === selectedRunId ? loadedArtifacts.data : [];
+  const artifactsLoading = selectedRunId !== null && loadedArtifacts?.runId !== selectedRunId;
 
   useEffect(() => {
-    if (!selectedRunId) {
-      setAudit(null);
-      setArtifacts([]);
-      return;
-    }
+    if (!selectedRunId) return;
     let isCurrent = true;
-    setAuditLoading(true);
     api.getAudit(selectedRunId)
-      .then((data) => { if (isCurrent) setAudit(data); })
-      .catch(() => { if (isCurrent) setAudit(null); })
-      .finally(() => { if (isCurrent) setAuditLoading(false); });
+      .then((data) => { if (isCurrent) setLoadedAudit({ runId: selectedRunId, data }); })
+      .catch(() => { if (isCurrent) setLoadedAudit({ runId: selectedRunId, data: null }); });
     return () => { isCurrent = false; };
   }, [selectedRunId]);
 
   useEffect(() => {
-    if (!selectedRunId) {
-      setArtifacts([]);
-      return;
-    }
+    if (!selectedRunId) return;
     let isCurrent = true;
-    setArtifactsLoading(true);
     api.getArtifacts(selectedRunId)
-      .then((data) => { if (isCurrent) setArtifacts(data); })
-      .catch(() => { if (isCurrent) setArtifacts([]); })
-      .finally(() => { if (isCurrent) setArtifactsLoading(false); });
+      .then((data) => { if (isCurrent) setLoadedArtifacts({ runId: selectedRunId, data }); })
+      .catch(() => { if (isCurrent) setLoadedArtifacts({ runId: selectedRunId, data: [] }); });
     return () => { isCurrent = false; };
   }, [selectedRunId]);
 

@@ -76,9 +76,7 @@ class TestSseEndpoint:
             session.add(run)
             session.commit()
 
-        # Verify endpoint is registered and returns correct content-type
-        # We can't easily read the infinite stream in tests, so we verify the route exists
-        # by checking app.routes
-        from fastapi.routing import APIRoute
-        route_paths = [r.path for r in app.routes if isinstance(r, APIRoute)]
-        assert "/api/runs/{run_id}/events/stream" in route_paths
+        # We can't easily read the infinite stream in tests, so we verify the route is
+        # registered. The OpenAPI schema is used because newer FastAPI versions no longer
+        # flatten included routers into app.routes.
+        assert "/api/runs/{run_id}/events/stream" in app.openapi()["paths"]

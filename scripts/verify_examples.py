@@ -7,6 +7,8 @@ import sys
 import time
 from pathlib import Path
 
+import httpx
+
 PROJECT_ROOT = Path(__file__).parent.parent
 
 
@@ -37,11 +39,11 @@ class MockProvider(BaseProviderAdapter):
 
 settings = Settings(openai_api_key="mock-key")
 app = create_app(settings)
-app.state.provider_registry = {{"openai": MockProvider()}}
+app.state.provider_registry = {"openai": MockProvider()}
 
 import uvicorn
 uvicorn.run(app, host="127.0.0.1", port={port}, log_level="warning")
-'''.format(root=str(PROJECT_ROOT), port=port)
+'''.replace("{root}", str(PROJECT_ROOT)).replace("{port}", str(port))
 
     proc = subprocess.Popen(
         [sys.executable, "-c", wrapper_code],
@@ -49,8 +51,18 @@ uvicorn.run(app, host="127.0.0.1", port={port}, log_level="warning")
         stderr=subprocess.PIPE,
         text=True,
     )
-    time.sleep(3)
-    return proc
+    # Importing the server takes a while: wait for it instead of sleeping a fixed time.
+    deadline = time.monotonic() + 60
+    while time.monotonic() < deadline:
+        if proc.poll() is not None:
+            raise RuntimeError(f"Mock backend exited early:\n{proc.stderr.read() if proc.stderr else ''}")
+        try:
+            if httpx.get(f"http://127.0.0.1:{port}/health", timeout=1).status_code == 200:
+                return proc
+        except httpx.HTTPError:
+            time.sleep(0.5)
+    proc.kill()
+    raise RuntimeError(f"Mock backend did not become healthy on port {port}.")
 
 
 def run_example(name: str, env: dict[str, str]) -> bool:
@@ -102,6 +114,12 @@ def main() -> int:
         # lm_studio_agent.py
         lm_env = {**base_env, "TRACE_AGENT_TEST_MODEL": "mock-model"}
         results.append(run_example("lm_studio_agent.py", lm_env))
+
+        # pydantic_ai_agent.py (scripted model, no live LLM)
+        results.append(run_example("pydantic_ai_agent.py", base_env))
+
+        # pydantic_ai_otel_agent.py (spans exported over OTLP to the mock backend)
+        results.append(run_example("pydantic_ai_otel_agent.py", base_env))
 
         # coding_agent_debugger_demo.py scenarios
         for scenario in ["correct_edit", "wrong_file", "retry_without_adaptation", "same_tools_different_artifact"]:

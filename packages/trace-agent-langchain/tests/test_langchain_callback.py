@@ -105,6 +105,24 @@ class TestLLMCallbacks:
         assert obs["metadata"]["prompt_tokens"] == 10
         assert obs["metadata"]["completion_tokens"] == 5
 
+    def test_chat_model_identity_is_remembered_for_the_end_callback(self, callback, mock_run_session) -> None:
+        # LangChain reports the model when a chat call starts but not when it ends.
+        callback.on_chat_model_start(
+            serialized={"name": "ChatOpenAI"},
+            messages=[[]],
+            run_id="llm-1",
+            invocation_params={"model": "gpt-4o"},
+        )
+        result = MagicMock()
+        result.llm_output = {"token_usage": {"prompt_tokens": 10, "completion_tokens": 5}}
+        callback.on_llm_end(response=result, run_id="llm-1")
+
+        obs = mock_run_session.client._request.call_args[0][2]["observations"][0]
+        assert obs["status"] == "succeeded"
+        assert obs["model"] == "gpt-4o"
+        assert obs["provider"] == "ChatOpenAI"
+        assert "llm-1" not in callback._llms
+
     def test_on_llm_error_posts_failed(self, callback, mock_run_session) -> None:
         callback._starts["llm-1"] = 0.0
         callback.on_llm_error(
@@ -137,55 +155,62 @@ class TestLLMCallbacks:
 
 
 class TestToolCallbacks:
-    def test_on_tool_start_posts_observation(self, callback, mock_run_session) -> None:
+    def test_on_tool_start_posts_nothing(self, callback, mock_run_session) -> None:
+        # /tool-results records the started event too, so posting here would duplicate it.
         callback.on_tool_start(
             serialized={"name": "search"},
             input_str='{"q": "hello"}',
             run_id="tool-1",
             parent_run_id="llm-1",
         )
-        args = mock_run_session.client._request.call_args
-        obs = args[0][2]["observations"][0]
-        assert obs["kind"] == "tool_call"
-        assert obs["status"] == "running"
-        assert obs["tool_name"] == "search"
-        assert obs["step_id"] == "tool-1"
-        assert obs["parent_step_id"] == "llm-1"
+        mock_run_session.client._request.assert_not_called()
 
-    def test_on_tool_end_posts_result_and_observation(self, callback, mock_run_session) -> None:
-        callback._starts["tool-1"] = 0.0
-        callback.on_tool_end(
-            output="result here",
+    def test_on_tool_end_posts_a_single_tool_result(self, callback, mock_run_session) -> None:
+        callback.on_tool_start(
+            serialized={"name": "search"},
+            input_str='{"q": "hello"}',
             run_id="tool-1",
             parent_run_id="llm-1",
-            metadata={"name": "search"},
+            inputs={"q": "hello"},
         )
-        assert mock_run_session.client._request.call_count == 2
-        # First call is tool-results
-        args0 = mock_run_session.client._request.call_args_list[0]
-        assert "/tool-results" in args0[0][1]
-        result = args0[0][2]["results"][0]
+        # LangChain does not repeat the tool name in on_tool_end's metadata.
+        callback.on_tool_end(output="result here", run_id="tool-1", parent_run_id="llm-1")
+
+        assert mock_run_session.client._request.call_count == 1
+        args = mock_run_session.client._request.call_args
+        assert "/tool-results" in args[0][1]
+        result = args[0][2]["results"][0]
         assert result["status"] == "succeeded"
         assert result["name"] == "search"
-        # Second call is observation
-        args1 = mock_run_session.client._request.call_args_list[1]
-        obs = args1[0][2]["observations"][0]
-        assert obs["kind"] == "tool_call"
-        assert obs["status"] == "succeeded"
+        assert result["step_id"] == "tool-1"
+        assert result["parent_step_id"] == "llm-1"
+        assert result["args"] == {"q": "hello"}
+        assert result["output_summary"] == "result here"
+        assert result["output_hash"]
 
-    def test_on_tool_error_posts_failed(self, callback, mock_run_session) -> None:
-        callback._starts["tool-1"] = 0.0
-        callback.on_tool_error(
-            error=Exception("fail"),
-            run_id="tool-1",
-            parent_run_id="llm-1",
-            metadata={"name": "search"},
-        )
-        assert mock_run_session.client._request.call_count == 2
-        args0 = mock_run_session.client._request.call_args_list[0]
-        result = args0[0][2]["results"][0]
+    def test_tool_args_fall_back_to_the_raw_input(self, callback, mock_run_session) -> None:
+        callback.on_tool_start(serialized={"name": "search"}, input_str="hello", run_id="tool-1")
+        callback.on_tool_end(output="ok", run_id="tool-1")
+
+        result = mock_run_session.client._request.call_args[0][2]["results"][0]
+        assert result["args"] == {"input": "hello"}
+
+    def test_tool_name_falls_back_to_metadata_without_a_start(self, callback, mock_run_session) -> None:
+        callback.on_tool_end(output="ok", run_id="tool-1", metadata={"name": "search"})
+
+        result = mock_run_session.client._request.call_args[0][2]["results"][0]
+        assert result["name"] == "search"
+
+    def test_on_tool_error_posts_a_single_failed_result(self, callback, mock_run_session) -> None:
+        callback.on_tool_start(serialized={"name": "search"}, input_str="x", run_id="tool-1", parent_run_id="llm-1")
+        callback.on_tool_error(error=Exception("fail"), run_id="tool-1", parent_run_id="llm-1")
+
+        assert mock_run_session.client._request.call_count == 1
+        result = mock_run_session.client._request.call_args[0][2]["results"][0]
         assert result["status"] == "failed"
+        assert result["name"] == "search"
         assert result["error_code"] == "Exception"
+        assert result["error_summary"] == "fail"
 
 
 class TestRetrieverCallbacks:

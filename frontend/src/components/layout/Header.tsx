@@ -1,4 +1,4 @@
-import { Activity, BarChart3, Terminal, GitCompare, Sun, Moon, PanelLeft, PanelBottom, PanelRight } from "lucide-react"
+import { BarChart3, Terminal, GitCompare, Sun, Moon, PanelLeft, PanelBottom, PanelRight } from "lucide-react"
 import { useTheme } from "next-themes"
 import type { RunListItem } from "../../types"
 
@@ -28,9 +28,9 @@ export function Header({
   const { theme, setTheme } = useTheme()
 
   return (
-    <header className="h-10 shrink-0 border-b border-line bg-surface flex items-center justify-between px-4">
+    <header className="h-14 shrink-0 border-b border-line bg-surface flex items-center justify-between px-4">
       <div className="flex items-center gap-3 min-w-0">
-        <img src="/icon.png" alt="TraceAgent" className="h-7 w-auto shrink-0" />
+        <img src="/icon.png" alt="TraceAgent" className="h-11 w-auto shrink-0" />
         <span className="text-xs text-muted hidden sm:inline">Trace & Observe</span>
       </div>
 

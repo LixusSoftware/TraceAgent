@@ -17,6 +17,8 @@ import time
 import traceback
 from typing import Any
 
+from trace_agent_sdk.redaction import redact_payload, stable_hash
+
 try:
     from langchain_core.callbacks import BaseCallbackHandler
     from langchain_core.outputs import ChatResult, LLMResult
@@ -51,8 +53,40 @@ class TraceAgentLangChainCallback(BaseCallbackHandler):
         self.record_retriever_events = record_retriever_events
         # langchain run_id -> start timestamp (for duration calculation)
         self._starts: dict[str, float] = {}
+        # langchain run_id -> tool name and arguments, known only when the tool starts
+        self._tools: dict[str, dict[str, Any]] = {}
+        # langchain run_id -> provider and model, known only when the call starts
+        self._llms: dict[str, dict[str, Any]] = {}
 
     # ── Helpers ─────────────────────────────────────────────────────────────
+
+    def _llm_identity(
+        self,
+        run_id: str,
+        provider: str | None,
+        model: str | None,
+    ) -> tuple[str | None, str | None]:
+        """Fill in the provider/model that the end callbacks of an LLM call lack."""
+        started = self._llms.pop(run_id, {})
+        if provider in (None, "unknown"):
+            provider = started.get("provider") or provider
+        return provider, model or started.get("model")
+
+    def _tool_result_base(
+        self,
+        run_id: str,
+        parent_run_id: str | None,
+        metadata: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        """Identity fields of a /tool-results entry, from what on_tool_start saw."""
+        started = self._tools.pop(run_id, {})
+        return {
+            "call_id": str(run_id),
+            "name": started.get("name") or (metadata or {}).get("name") or "unknown",
+            "step_id": str(run_id),
+            "parent_step_id": str(parent_run_id) if parent_run_id else None,
+            "args": redact_payload(started.get("args") or {}),
+        }
 
     def _post_observations(self, observations: list[dict[str, Any]]) -> None:
         """Send observations to the TraceAgent backend."""
@@ -215,6 +249,7 @@ class TraceAgentLangChainCallback(BaseCallbackHandler):
         metadata: dict[str, Any] | None,
     ) -> None:
         self._starts[run_id] = time.time()
+        self._llms[run_id] = {"provider": provider, "model": model}
         self._post_observations(
             [
                 {
@@ -240,6 +275,7 @@ class TraceAgentLangChainCallback(BaseCallbackHandler):
         metadata: dict[str, Any] | None,
     ) -> None:
         duration_ms = int((time.time() - self._starts.pop(run_id, time.time())) * 1000)
+        provider, model = self._llm_identity(run_id, provider, model)
         usage = self._extract_token_usage(result)
         self._post_observations(
             [
@@ -267,6 +303,7 @@ class TraceAgentLangChainCallback(BaseCallbackHandler):
         metadata: dict[str, Any] | None,
     ) -> None:
         duration_ms = int((time.time() - self._starts.pop(run_id, time.time())) * 1000)
+        provider, model = self._llm_identity(run_id, provider, model)
         self._post_observations(
             [
                 {
@@ -399,25 +436,15 @@ class TraceAgentLangChainCallback(BaseCallbackHandler):
         metadata: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> None:
+        # /tool-results records both the started and completed events (and keeps
+        # tool_count/error_count) when the tool ends, so nothing is posted here.
+        # LangChain only gives the tool name and inputs now, so remember them.
         self._starts[run_id] = time.time()
-        tool_name = (serialized or {}).get("name", "unknown")
-        self._post_observations(
-            [
-                {
-                    "kind": "tool_call",
-                    "step_id": str(run_id),
-                    "parent_step_id": str(parent_run_id) if parent_run_id else None,
-                    "status": "running",
-                    "tool_name": tool_name,
-                    "input_summary": f"Tool '{tool_name}' started",
-                    "metadata": {
-                        "input": input_str,
-                        "tags": tags,
-                        **(metadata or {}),
-                    },
-                }
-            ]
-        )
+        inputs = kwargs.get("inputs")
+        self._tools[run_id] = {
+            "name": (serialized or {}).get("name", "unknown"),
+            "args": inputs if isinstance(inputs, dict) else {"input": input_str},
+        }
 
     def on_tool_end(
         self,
@@ -430,32 +457,15 @@ class TraceAgentLangChainCallback(BaseCallbackHandler):
         **kwargs: Any,
     ) -> None:
         duration_ms = int((time.time() - self._starts.pop(run_id, time.time())) * 1000)
-        tool_name = (metadata or {}).get("name", "unknown")
         output_str = str(output) if output is not None else ""
         self._post_tool_results(
             [
                 {
-                    "call_id": run_id,
-                    "name": tool_name,
-                    "step_id": run_id,
+                    **self._tool_result_base(run_id, parent_run_id, metadata),
                     "status": "succeeded",
                     "output_summary": output_str[:500],
-                    "output_hash": None,
+                    "output_hash": stable_hash(output_str),
                     "duration_ms": duration_ms,
-                }
-            ]
-        )
-        self._post_observations(
-            [
-                {
-                    "kind": "tool_call",
-                    "step_id": str(run_id),
-                    "parent_step_id": str(parent_run_id) if parent_run_id else None,
-                    "status": "succeeded",
-                    "tool_name": tool_name,
-                    "duration_ms": duration_ms,
-                    "input_summary": f"Tool '{tool_name}' succeeded",
-                    "metadata": {"tags": tags, **(metadata or {})},
                 }
             ]
         )
@@ -471,35 +481,17 @@ class TraceAgentLangChainCallback(BaseCallbackHandler):
         **kwargs: Any,
     ) -> None:
         duration_ms = int((time.time() - self._starts.pop(run_id, time.time())) * 1000)
-        tool_name = (metadata or {}).get("name", "unknown")
         error_summary = str(error)
         self._post_tool_results(
             [
                 {
-                    "call_id": run_id,
-                    "name": tool_name,
-                    "step_id": run_id,
+                    **self._tool_result_base(run_id, parent_run_id, metadata),
                     "status": "failed",
                     "output_summary": error_summary[:500],
-                    "output_hash": None,
+                    "output_hash": stable_hash({"error": error_summary}),
                     "error_code": error.__class__.__name__,
                     "error_summary": error_summary,
                     "duration_ms": duration_ms,
-                }
-            ]
-        )
-        self._post_observations(
-            [
-                {
-                    "kind": "tool_call",
-                    "step_id": str(run_id),
-                    "parent_step_id": str(parent_run_id) if parent_run_id else None,
-                    "status": "failed",
-                    "tool_name": tool_name,
-                    "duration_ms": duration_ms,
-                    "error_code": error.__class__.__name__,
-                    "error_summary": error_summary,
-                    "metadata": {"tags": tags, **(metadata or {})},
                 }
             ]
         )

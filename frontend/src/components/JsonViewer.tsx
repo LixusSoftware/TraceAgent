@@ -144,7 +144,7 @@ function tokenizeJson(text: string): Token[] {
     }
 
     // Punctuation
-    if (/[{}\[\],:]/.test(ch)) {
+    if (/[{}[\],:]/.test(ch)) {
       tokens.push({ type: "punctuation", value: ch });
       i++;
       continue;

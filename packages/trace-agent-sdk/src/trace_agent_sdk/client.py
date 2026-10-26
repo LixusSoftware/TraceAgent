@@ -8,7 +8,7 @@ import subprocess
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, get_type_hints
 from uuid import uuid4
 
 import httpx
@@ -469,6 +469,34 @@ class RunSession:
             record_retriever_events=record_retriever_events,
         )
 
+    def as_pydantic_ai_capability(
+        self,
+        *,
+        record_model_events: bool = True,
+        record_tool_events: bool = True,
+        record_node_events: bool = False,
+        redact_fields: list[str] | None = None,
+        failure_cooldown: float = 30.0,
+        flush_timeout: float = 5.0,
+    ) -> Any:
+        """Return a Pydantic AI capability bound to this run.
+
+        Usage:
+            agent = Agent("openai:gpt-4o", capabilities=[run.as_pydantic_ai_capability()])
+            agent.run_sync("...")
+        """
+        from trace_agent_pydantic_ai import TraceAgentCapability
+
+        return TraceAgentCapability(
+            self,
+            record_model_events=record_model_events,
+            record_tool_events=record_tool_events,
+            record_node_events=record_node_events,
+            redact_fields=redact_fields or [],
+            failure_cooldown=failure_cooldown,
+            flush_timeout=flush_timeout,
+        )
+
     def _execute_tool(self, call: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
         binding = self.tools.get(call["name"])
         if binding is None:
@@ -520,10 +548,15 @@ class RunSession:
 
     def _build_input_schema(self, func: Callable[..., Any]) -> dict[str, Any]:
         signature = inspect.signature(func)
+        try:
+            # Resolves postponed annotations ("int" under `from __future__ import annotations`).
+            hints = get_type_hints(func)
+        except Exception:
+            hints = {}
         properties: dict[str, Any] = {}
         required: list[str] = []
         for parameter_name, parameter in signature.parameters.items():
-            annotation = parameter.annotation if parameter.annotation is not inspect._empty else str
+            annotation = hints.get(parameter_name, parameter.annotation if parameter.annotation is not inspect._empty else str)
             properties[parameter_name] = {"type": TYPE_MAP.get(annotation, "string")}
             if parameter.default is inspect._empty:
                 required.append(parameter_name)

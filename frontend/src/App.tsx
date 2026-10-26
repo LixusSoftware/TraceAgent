@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Header } from "./components/layout/Header"
 import { Sidebar } from "./components/layout/Sidebar"
 import { Inspector } from "./components/layout/Inspector"
@@ -19,18 +19,31 @@ export default function App() {
   const [runs, setRuns] = useState<RunListItem[]>([])
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>("run")
-  const [overview, setOverview] = useState<RunOverview | null>(null)
-  const [timeline, setTimeline] = useState<TimelineResponse | null>(null)
-  const [dashboard, setDashboard] = useState<DashboardResponse | null>(null)
-  const [selectedEvent, setSelectedEvent] = useState<EventItem | null>(null)
-  const [selectedGraphNode, setSelectedGraphNode] = useState<GraphNode | null>(null)
-  const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [loadedOverview, setOverview] = useState<RunOverview | null>(null)
+  const [loadedTimeline, setTimeline] = useState<TimelineResponse | null>(null)
+  const [loadedDashboard, setDashboard] = useState<DashboardResponse | null>(null)
+  const [selection, setSelection] = useState<{ runId: string | null; event: EventItem | null; node: GraphNode | null }>({
+    runId: null,
+    event: null,
+    node: null,
+  })
+  const [loadedRunId, setLoadedRunId] = useState<string | null>(null)
+  const [, setError] = useState<string | null>(null)
   const [runViewMode, setRunViewMode] = useState<RunView>("timeline")
   const [bottomTab, setBottomTab] = useState<BottomTab>("audit")
   const [showSidebar, setShowSidebar] = useState(true)
   const [showBottomPanel, setShowBottomPanel] = useState(true)
   const [showInspector, setShowInspector] = useState(true)
+
+  // Data of a run or view that is no longer selected is hidden by deriving it here,
+  // instead of resetting state from inside effects.
+  const overview = selectedRunId ? loadedOverview : null
+  const timeline = selectedRunId ? loadedTimeline : null
+  const dashboard = workspaceMode === "dashboard" ? loadedDashboard : null
+  const isLoading = selectedRunId !== null && loadedRunId !== selectedRunId
+  // The inspector only shows what was selected in the run that is open.
+  const selectedEvent = selection.runId === selectedRunId ? selection.event : null
+  const selectedGraphNode = selection.runId === selectedRunId ? selection.node : null
 
   const refreshRuns = useCallback(async () => {
     try {
@@ -40,42 +53,42 @@ export default function App() {
         if (current && data.some((r) => r.id === current)) return current
         return data[0]?.id ?? null
       })
-    } catch (e) {
+    } catch {
       setError("Failed to load runs")
     }
   }, [])
 
   useEffect(() => {
-    refreshRuns()
+    const first = setTimeout(refreshRuns, 0)
     const id = setInterval(refreshRuns, 30000)
-    return () => clearInterval(id)
+    return () => {
+      clearTimeout(first)
+      clearInterval(id)
+    }
   }, [refreshRuns])
 
   useEffect(() => {
-    if (!selectedRunId) {
-      setOverview(null)
-      setTimeline(null)
-      return
-    }
+    if (!selectedRunId) return
     let isCurrent = true
-    setIsLoading(true)
     Promise.all([api.getRun(selectedRunId), api.getTimeline(selectedRunId)])
       .then(([ov, tl]) => {
         if (isCurrent) {
           setOverview(ov)
           setTimeline(tl)
+          setLoadedRunId(selectedRunId)
         }
       })
-      .catch(() => setError("Failed to load run data"))
-      .finally(() => setIsLoading(false))
+      .catch(() => {
+        if (isCurrent) {
+          setError("Failed to load run data")
+          setLoadedRunId(selectedRunId)
+        }
+      })
     return () => { isCurrent = false }
   }, [selectedRunId])
 
   useEffect(() => {
-    if (workspaceMode !== "dashboard") {
-      setDashboard(null)
-      return
-    }
+    if (workspaceMode !== "dashboard") return
     let isCurrent = true
     api.getDashboard("24h")
       .then((data) => { if (isCurrent) setDashboard(data) })
@@ -83,14 +96,27 @@ export default function App() {
     return () => { isCurrent = false }
   }, [workspaceMode])
 
+  const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => () => {
+    if (refreshTimer.current) clearTimeout(refreshTimer.current)
+  }, [selectedRunId])
+
   useEventStream(selectedRunId, useCallback((evt) => {
-    if (evt.type === "event" && selectedRunId) {
+    if (!selectedRunId || evt.type === "connected" || evt.type === "heartbeat") return
+    // A run records events in bursts: reload once they settle instead of once per event.
+    if (refreshTimer.current) clearTimeout(refreshTimer.current)
+    refreshTimer.current = setTimeout(() => {
       api.getTimeline(selectedRunId).then(setTimeline).catch(() => undefined)
       api.getRun(selectedRunId).then(setOverview).catch(() => undefined)
-    }
-  }, [selectedRunId]))
+    }, 250)
+    // The sidebar shows the run status: update it as soon as the run ends.
+    if (evt.type === "run.completed" || evt.type === "run.failed") refreshRuns()
+  }, [selectedRunId, refreshRuns]))
 
   const selectedRun = useMemo(() => runs.find((r) => r.id === selectedRunId) ?? null, [runs, selectedRunId])
+  // The inspector resolves what a decision or graph node refers to from the events of the open run.
+  const runEvents = useMemo(() => timeline?.groups.flatMap((group) => group.events) ?? [], [timeline])
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -143,20 +169,22 @@ export default function App() {
   }, [runs, refreshRuns])
 
   const handleSelectEvent = useCallback((event: EventItem | null) => {
-    setSelectedEvent(event)
-    if (event) {
-      setSelectedGraphNode(null)
-      setShowInspector(true)
-    }
-  }, [])
+    setSelection((prev) => ({
+      runId: selectedRunId,
+      event,
+      node: event || prev.runId !== selectedRunId ? null : prev.node,
+    }))
+    if (event) setShowInspector(true)
+  }, [selectedRunId])
 
   const handleSelectGraphNode = useCallback((node: GraphNode | null) => {
-    setSelectedGraphNode(node)
-    if (node) {
-      setSelectedEvent(null)
-      setShowInspector(true)
-    }
-  }, [])
+    setSelection((prev) => ({
+      runId: selectedRunId,
+      event: node || prev.runId !== selectedRunId ? null : prev.event,
+      node,
+    }))
+    if (node) setShowInspector(true)
+  }, [selectedRunId])
 
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-bg text-text">
@@ -228,6 +256,8 @@ export default function App() {
             overview={overview}
             selectedEvent={selectedEvent}
             selectedGraphNode={selectedGraphNode}
+            events={runEvents}
+            onSelectEvent={handleSelectEvent}
           />
         )}
       </div>

@@ -89,6 +89,18 @@ def _parse_json(value: Any) -> Any:
         return value
 
 
+def _readable(text: Any) -> Any:
+    """Decode the \\uXXXX escapes of a JSON text, so accents show as typed.
+
+    Some producers serialize results with json.dumps defaults, which escapes every non-ASCII character.
+    """
+    if isinstance(text, str) and "\\u" in text:
+        parsed = _parse_json(text)
+        if parsed is not text:
+            return parsed
+    return text
+
+
 def _error_of(span: SpanRecord) -> tuple[str, str]:
     """Error code (the exception class name) and message of a failed span."""
     for event in span.events:
@@ -347,7 +359,7 @@ def _tool_steps(session: Session, run: Run, span: SpanRecord, capture_full: bool
         parent_step_id=span.parent_span_id,
         status="failed" if failed else "succeeded",
         args=redact_payload(arguments if isinstance(arguments, dict) else {"input": arguments} if arguments is not None else {}),
-        output_summary=summarize_value(result_text) if result_text is not None else None,
+        output_summary=summarize_value(_readable(result_text)) if result_text is not None else None,
         output_hash=stable_hash(result_text if not failed else {"error": message}),
         error_code=code,
         error_summary=message,

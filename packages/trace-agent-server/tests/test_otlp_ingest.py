@@ -433,6 +433,40 @@ class TestPrivacy:
         assert len(next(e for e in events if e.type == "tool.succeeded").summary) <= 220
 
 
+class TestNonAsciiText:
+    def test_accents_in_a_tool_result_are_shown_as_typed(self, client) -> None:
+        spans = agent_spans()
+        spans[2].attributes["gen_ai__tool__call__result"] = json.dumps({"mensaje": "El OEE bajó"}, ensure_ascii=False)
+
+        post(client, export(*spans))
+
+        _, events = load(client)
+        summary = next(e for e in events if e.type == "tool.succeeded").summary
+        assert "El OEE bajó" in summary
+        assert "\\u" not in summary
+
+    def test_a_result_escaped_by_the_producer_is_decoded(self, client) -> None:
+        spans = agent_spans()
+        spans[2].attributes["gen_ai__tool__call__result"] = json.dumps({"mensaje": "El OEE bajó"})
+        assert "\\u00f3" in spans[2].attributes["gen_ai__tool__call__result"]
+
+        post(client, export(*spans))
+
+        _, events = load(client)
+        summary = next(e for e in events if e.type == "tool.succeeded").summary
+        assert "El OEE bajó" in summary
+        assert "\\u" not in summary
+
+    def test_a_plain_text_result_with_a_backslash_is_left_alone(self, client) -> None:
+        spans = agent_spans()
+        spans[2].attributes["gen_ai__tool__call__result"] = r"path C:\users\ana"
+
+        post(client, export(*spans))
+
+        _, events = load(client)
+        assert next(e for e in events if e.type == "tool.succeeded").summary == r"path C:\users\ana"
+
+
 class TestEndpoint:
     def test_the_response_is_a_valid_protobuf_export_response(self, client) -> None:
         response = post(client, export(*agent_spans()))

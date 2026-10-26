@@ -33,7 +33,8 @@ def summarize_value(value: Any, redact_fields: list[str] | None = None, max_leng
     redacted = redact_payload(value, redact_fields)
     if isinstance(redacted, str):
         return redacted
-    rendered = json.dumps(redacted, ensure_ascii=True, sort_keys=True, default=str)
+    # Keep accents and other non-ASCII text readable: the summary is shown to people as it is.
+    rendered = json.dumps(redacted, ensure_ascii=False, sort_keys=True, default=str)
     if len(rendered) <= max_length:
         return rendered
     return f"{rendered[: max_length - 3]}..."

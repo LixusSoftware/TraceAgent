@@ -52,3 +52,16 @@ class TestSummarizeValue:
 
     def test_applies_redaction(self) -> None:
         assert "secret" not in summarize_value({"password": "secret"}, ["password"])
+
+    def test_keeps_accents_and_other_non_ascii_text_readable(self) -> None:
+        summary = summarize_value({"mensaje": "El OEE bajó", "línea": "3", "nota": "日本語 ✓"})
+
+        assert summary == '{"línea": "3", "mensaje": "El OEE bajó", "nota": "日本語 ✓"}'
+        assert "\\u" not in summary
+
+    def test_a_cut_summary_never_ends_inside_an_escape_sequence(self) -> None:
+        summary = summarize_value({"texto": "ó" * 100}, max_length=40)
+
+        assert len(summary) == 40
+        assert summary.endswith("...")
+        assert "\\u" not in summary

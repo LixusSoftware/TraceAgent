@@ -521,7 +521,7 @@ class RunSession:
             tool_message = {
                 "role": "tool",
                 "tool_call_id": call["id"],
-                "content": json.dumps(output, ensure_ascii=True, default=str),
+                "content": json.dumps(output, ensure_ascii=False, default=str),
             }
             return result_payload, tool_message
         except Exception as exc:
@@ -542,7 +542,7 @@ class RunSession:
             tool_message = {
                 "role": "tool",
                 "tool_call_id": call["id"],
-                "content": json.dumps({"error": str(exc)}, ensure_ascii=True),
+                "content": json.dumps({"error": str(exc)}, ensure_ascii=False),
             }
             return result_payload, tool_message
 

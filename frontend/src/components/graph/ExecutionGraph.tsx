@@ -10,6 +10,7 @@ import {
 } from "@xyflow/react";
 import type { GraphResponse, GraphNode, GraphEdge } from "../../types";
 import { api } from "../../api";
+import { decisionKindLabel, eventNodeLabel } from "../../lib/humanize";
 import { GitBranch, Map } from "lucide-react";
 
 interface ExecutionGraphProps {
@@ -37,7 +38,7 @@ function buildFlowNodes(nodes: GraphNode[]): Node[] {
       id: node.id,
       type: "default",
       position: node.position,
-      data: { label: node.label, ...node.data },
+      data: { label: node.type === "event" ? eventNodeLabel(node.label, node.data?.toolName) : node.label, ...node.data },
       draggable: false,
       selectable: true,
       sourcePosition: Position.Bottom,
@@ -62,7 +63,7 @@ function buildFlowEdges(edges: GraphEdge[]): Edge[] {
     id: edge.id,
     source: edge.source,
     target: edge.target,
-    label: edge.label ?? undefined,
+    label: edge.label ? decisionKindLabel(edge.label) : undefined,
     animated: edge.animated,
     style: { stroke: "#525252", strokeWidth: 1.5 },
     labelStyle: { fill: "#a3a3a3", fontSize: 9 },
@@ -71,25 +72,22 @@ function buildFlowEdges(edges: GraphEdge[]): Edge[] {
 }
 
 export function ExecutionGraph({ runId, view = "execution", onSelectNode }: ExecutionGraphProps) {
-  const [graph, setGraph] = useState<GraphResponse | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loaded, setLoaded] = useState<{ key: string; data: GraphResponse | null } | null>(null);
   const [showMinimap, setShowMinimap] = useState(false);
+  // Loading and the graph itself are derived from which run/view the data was loaded for,
+  // instead of toggling state from inside the effect.
+  const key = runId ? `${runId}|${view}` : null;
+  const graph = loaded?.key === key ? loaded.data : null;
+  const loading = key !== null && loaded?.key !== key;
 
   useEffect(() => {
-    if (!runId) {
-      setGraph(null);
-      return;
-    }
+    if (!key || !runId) return;
     let isCurrent = true;
-    setLoading(true);
     api.getGraph(runId, view)
-      .then((data) => {
-        if (isCurrent) setGraph(data);
-      })
-      .catch(() => { if (isCurrent) setGraph(null); })
-      .finally(() => { if (isCurrent) setLoading(false); });
+      .then((data) => { if (isCurrent) setLoaded({ key, data }); })
+      .catch(() => { if (isCurrent) setLoaded({ key, data: null }); });
     return () => { isCurrent = false; };
-  }, [runId, view]);
+  }, [key, runId, view]);
 
   const nodes = useMemo(() => (graph ? buildFlowNodes(graph.nodes) : []), [graph]);
   const edges = useMemo(() => (graph ? buildFlowEdges(graph.edges) : []), [graph]);

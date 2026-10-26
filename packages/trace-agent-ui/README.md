@@ -5,6 +5,7 @@
 ![GitHub License](https://img.shields.io/github/license/LixusSoftware/TraceAgent)
 ![Tests](https://github.com/LixusSoftware/TraceAgent/actions/workflows/test.yml/badge.svg)
 ![Docker Build](https://github.com/LixusSoftware/TraceAgent/actions/workflows/build-docker.yml/badge.svg)
+[![Website](https://img.shields.io/badge/website-traceagent.vercel.app-blue)](https://traceagent.vercel.app)
 
 Static file server for the TraceAgent React frontend. Serves the built SPA and proxies `/api/*` to the backend.
 

@@ -11,7 +11,8 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.11", "3.12", "3.13"]
+        # 3.15 is left out until tiktoken (via the LangChain extra) publishes wheels for it.
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
       fail-fast: false
 
     steps:
@@ -27,12 +28,19 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+          allow-prereleases: true
 
       - name: Sync workspace
-        run: uv sync --extra dev --extra providers --extra langchain
+        run: uv sync --extra dev --extra providers --extra langchain --extra pydantic-ai
+
+      - name: Run sdk tests
+        run: uv run --package trace-agent-sdk pytest packages/trace-agent-sdk/tests -v
 
       - name: Run server tests
         run: uv run --package trace-agent-server pytest packages/trace-agent-server/tests -v --cov=trace_agent_server --cov-report=xml
 
       - name: Run langchain tests
         run: uv run --package trace-agent-langchain pytest packages/trace-agent-langchain/tests -v
+
+      - name: Run pydantic-ai tests
+        run: uv run --package trace-agent-pydantic-ai --extra dev pytest packages/trace-agent-pydantic-ai/tests -v

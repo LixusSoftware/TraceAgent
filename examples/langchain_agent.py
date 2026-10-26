@@ -20,7 +20,6 @@ import os
 from langchain import hub
 from langchain.agents import AgentExecutor, create_openai_tools_agent
 from langchain_openai import ChatOpenAI
-
 from trace_agent_sdk import TraceAgentClient
 
 

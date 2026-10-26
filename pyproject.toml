@@ -5,4 +5,5 @@ members = ["packages/*"]
 trace-agent-sdk = { workspace = true }
 trace-agent-server = { workspace = true }
 trace-agent-langchain = { workspace = true }
+trace-agent-pydantic-ai = { workspace = true }
 trace-agent-ui = { workspace = true }

@@ -157,11 +157,40 @@ class TestLangChainCallbackIntegration:
         callback.on_tool_end(
             output="found it",
             run_id="tool-1",
-            metadata={"name": "search"},
+            parent_run_id="chain-1",
         )
 
         with client.app.state.session_factory() as session:
+            run = session.get(Run, run_id)
             events = session.query(Event).filter_by(run_id=run_id).order_by(Event.seq).all()
             types = [e.type for e in events]
-            assert "tool.started" in types
-            assert "tool.succeeded" in types
+            # Each tool event exactly once, with the tool counted once.
+            assert types.count("tool.started") == 1
+            assert types.count("tool.succeeded") == 1
+            assert run.tool_count == 1
+            assert {e.tool_name for e in events if e.type.startswith("tool.")} == {"search"}
+            assert {e.parent_step_id for e in events if e.type.startswith("tool.")} == {"chain-1"}
+
+    def test_failed_tool_counts_one_error(self, test_client) -> None:
+        client = test_client
+        run_id = client.post("/api/runs", json={"agent_name": "test-tool-agent", "goal": "failing tool"}).json()["run_id"]
+
+        from trace_agent_langchain import TraceAgentLangChainCallback
+        from trace_agent_sdk import RunSession, TraceAgentClient
+
+        run_session = RunSession(
+            client=TraceAgentClient(base_url="", http_client=client),
+            run_id=run_id,
+            agent_name="test-tool-agent",
+            goal="test",
+        )
+        callback = TraceAgentLangChainCallback(run_session)
+
+        callback.on_tool_start(serialized={"name": "fetch"}, input_str="{}", run_id="tool-1")
+        callback.on_tool_error(error=ConnectionError("down"), run_id="tool-1")
+
+        with client.app.state.session_factory() as session:
+            run = session.get(Run, run_id)
+            types = [e.type for e in session.query(Event).filter_by(run_id=run_id).all()]
+            assert run.error_count == 1
+            assert types.count("tool.failed") == 1

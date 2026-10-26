@@ -9,6 +9,7 @@ from trace_agent_server.services.run_summary import (
     build_patch_activity,
     build_timeline_groups,
     build_tool_chain,
+    event_total_tokens,
 )
 
 
@@ -537,8 +538,8 @@ def _align_timeline(left_items: list[dict[str, Any]], right_items: list[dict[str
 
 
 def _overview_diff(left_run: Run, right_run: Run, left_events: list[Event], right_events: list[Event]) -> dict[str, Any]:
-    left_token_total = sum(int((event.event_metadata.get("usage") or {}).get("total_tokens") or 0) for event in left_events if event.type == "model.responded")
-    right_token_total = sum(int((event.event_metadata.get("usage") or {}).get("total_tokens") or 0) for event in right_events if event.type == "model.responded")
+    left_token_total = sum(event_total_tokens(event) for event in left_events)
+    right_token_total = sum(event_total_tokens(event) for event in right_events)
 
     duration_ms_delta = None
     if left_run.ended_at is not None and right_run.ended_at is not None:

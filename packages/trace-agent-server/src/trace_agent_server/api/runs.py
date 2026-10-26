@@ -42,6 +42,12 @@ from trace_agent_server.services.events import create_artifact, record_event
 from trace_agent_server.services.explanation import derive_explanation
 from trace_agent_server.services.graph import build_decision_graph, build_execution_graph
 from trace_agent_server.services.provider import ProviderTurnRequest
+from trace_agent_server.services.run_lifecycle import (
+    apply_llm_usage,
+    complete_run,
+    fail_run_with,
+    record_tool_result,
+)
 from trace_agent_server.services.run_summary import (
     build_command_chain,
     build_execution_metadata,
@@ -458,80 +464,7 @@ def store_tool_results(
     capture_full = getattr(request.app.state.settings, "capture_full_payloads", True)
 
     for result in payload.results:
-        started_event = record_event(
-            session,
-            run,
-            actor="sdk",
-            event_type="tool.started",
-            summary=f"Started {result.name}.",
-            status="running",
-            step_id=result.step_id,
-            tool_name=result.name,
-            payload_hash=stable_hash(result.args),
-            payload_full={"args": result.args} if capture_full else None,
-            metadata={"call_id": result.call_id, "args_summary": summarize_value(result.args)},
-        )
-        if result.status == "succeeded":
-            run.tool_count += 1
-            completed_event = record_event(
-                session,
-                run,
-                actor="sdk",
-                event_type="tool.succeeded",
-                summary=result.output_summary or f"{result.name} completed.",
-                status="succeeded",
-                step_id=result.step_id,
-                tool_name=result.name,
-                duration_ms=result.duration_ms,
-                payload_hash=result.output_hash,
-                payload_full={"output_summary": result.output_summary} if capture_full else None,
-                metadata={"call_id": result.call_id, "artifact_count": len(result.artifacts)},
-            )
-        else:
-            run.tool_count += 1
-            run.error_count += 1
-            completed_event = record_event(
-                session,
-                run,
-                actor="sdk",
-                event_type="tool.failed",
-                summary=result.error_summary or f"{result.name} failed.",
-                status="failed",
-                step_id=result.step_id,
-                tool_name=result.name,
-                duration_ms=result.duration_ms,
-                error_code=result.error_code,
-                payload_hash=result.output_hash,
-                payload_full={"error_summary": result.error_summary} if capture_full else None,
-                metadata={"call_id": result.call_id, "artifact_count": len(result.artifacts)},
-            )
-
-        for artifact_input in result.artifacts:
-            artifact = create_artifact(
-                session,
-                run,
-                source_event_id=completed_event.id,
-                kind=artifact_input.kind,
-                label=artifact_input.label,
-                summary=artifact_input.summary,
-                content_hash=stable_hash({"kind": artifact_input.kind, "label": artifact_input.label, "summary": artifact_input.summary}),
-                metadata=artifact_input.metadata,
-            )
-            run.artifact_count += 1
-            record_event(
-                session,
-                run,
-                actor="sdk",
-                event_type="artifact.created",
-                summary=artifact.summary,
-                status="created",
-                step_id=result.step_id,
-                tool_name=result.name,
-                artifact_refs=[artifact.id],
-                metadata={"artifact_label": artifact.label, "call_id": result.call_id},
-            )
-
-        started_event.status = "completed"
+        record_tool_result(session, run, result, capture_full=capture_full)
 
     session.commit()
     return {"status": "ok", "recorded": len(payload.results)}
@@ -755,6 +688,14 @@ def store_observations(
             event_type = "llm.started" if observation.status == "running" else "llm.completed"
             if observation.status == "failed":
                 event_type = "llm.failed"
+            if observation.status == "succeeded":
+                apply_llm_usage(
+                    run,
+                    provider=observation.provider,
+                    model=observation.model,
+                    prompt_tokens=observation.metadata.get("prompt_tokens"),
+                    completion_tokens=observation.metadata.get("completion_tokens"),
+                )
             record_event(
                 session,
                 run,
@@ -861,42 +802,7 @@ def finish_run(
     session: Session = Depends(get_session),
 ) -> dict[str, Any]:
     run = _get_run_or_404(session, run_id)
-    final_summary = summarize_value(payload.final_output) if payload.final_output is not None else "Run finished without final output."
-    run.final_output_summary = final_summary
-    run.status = "completed"
-    run.ended_at = utcnow()
-    completed_event = record_event(
-        session,
-        run,
-        actor="proxy",
-        event_type="run.completed",
-        summary=final_summary,
-        status="completed",
-        payload_hash=stable_hash(payload.final_output),
-    )
-    for artifact_input in payload.artifacts:
-        artifact = create_artifact(
-            session,
-            run,
-            source_event_id=completed_event.id,
-            kind=artifact_input.kind,
-            label=artifact_input.label,
-            summary=artifact_input.summary,
-            content_hash=stable_hash({"kind": artifact_input.kind, "label": artifact_input.label, "summary": artifact_input.summary}),
-            metadata=artifact_input.metadata,
-        )
-        run.artifact_count += 1
-        record_event(
-            session,
-            run,
-            actor="proxy",
-            event_type="artifact.created",
-            summary=artifact.summary,
-            status="created",
-            artifact_refs=[artifact.id],
-            metadata={"artifact_label": artifact.label},
-        )
-    derivation = derive_explanation(session, run)
+    derivation = complete_run(session, run, payload.final_output, payload.artifacts)
     session.commit()
     return {"status": "completed", "run_id": run.id, "decisions": len(derivation["decisions"])}
 
@@ -908,21 +814,7 @@ def fail_run(
     session: Session = Depends(get_session),
 ) -> dict[str, Any]:
     run = _get_run_or_404(session, run_id)
-    run.status = "failed"
-    run.ended_at = utcnow()
-    run.error_count += 1
-    run.final_output_summary = payload.error_summary
-    record_event(
-        session,
-        run,
-        actor="proxy",
-        event_type="run.failed",
-        summary=payload.error_summary,
-        status="failed",
-        error_code=payload.error_code,
-        payload_hash=stable_hash(payload.error_summary),
-    )
-    derive_explanation(session, run)
+    fail_run_with(session, run, payload.error_code, payload.error_summary)
     session.commit()
     return {"status": "failed", "run_id": run.id}
 

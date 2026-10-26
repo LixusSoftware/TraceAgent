@@ -60,7 +60,8 @@ export default function App() {
 
   useEffect(() => {
     const first = setTimeout(refreshRuns, 0)
-    const id = setInterval(refreshRuns, 30000)
+    // A new run shows up in the list within seconds of starting, without waiting for it to end.
+    const id = setInterval(refreshRuns, 3000)
     return () => {
       clearTimeout(first)
       clearInterval(id)

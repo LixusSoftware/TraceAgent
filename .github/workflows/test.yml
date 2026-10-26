@@ -42,5 +42,8 @@ jobs:
       - name: Run langchain tests
         run: uv run --package trace-agent-langchain pytest packages/trace-agent-langchain/tests -v
 
+      - name: Run ui tests
+        run: uv run --package trace-agent-ui --extra dev pytest packages/trace-agent-ui/tests -v
+
       - name: Run pydantic-ai tests
         run: uv run --package trace-agent-pydantic-ai --extra dev pytest packages/trace-agent-pydantic-ai/tests -v

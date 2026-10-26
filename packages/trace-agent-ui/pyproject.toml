@@ -36,6 +36,11 @@ Homepage = "https://github.com/LixusSoftware/TraceAgent"
 Repository = "https://github.com/LixusSoftware/TraceAgent"
 Issues = "https://github.com/LixusSoftware/TraceAgent/issues"
 
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3.2,<9.0.0",
+]
+
 [project.scripts]
 trace-agent-ui = "trace_agent_ui.app:main"
 

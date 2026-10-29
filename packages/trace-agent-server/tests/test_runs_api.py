@@ -282,7 +282,10 @@ def test_successful_run_generates_timeline_graph_and_explanation(tmp_path) -> No
     assert all(decision["alternatives"] == [] for decision in explanation["decisions"])
 
     graph = test_client.get(f"/api/runs/{run.run_id}/graph?view=execution").json()
-    assert len(graph["nodes"]) >= len(event_types)
+    # One node per step: a tool's start and end are one node, and every event is evidence of some node.
+    assert 0 < len(graph["nodes"]) < len(event_types)
+    evidence = {event_id for node in graph["nodes"] for event_id in node["data"]["evidenceIds"]}
+    assert len(evidence) == len(event_types)
 
     analytics = test_client.get(f"/api/runs/{run.run_id}/analytics").json()
     assert analytics["tool_graph"]["view"] == "tool_chain"

@@ -57,6 +57,14 @@ def _clip(value: Any) -> Any:
     return value
 
 
+def _plain(value: Any) -> Any:
+    """A value as plain JSON data: an output that is a model object would otherwise be summarized as its Python repr."""
+    try:
+        return to_jsonable_python(value, fallback=str)
+    except Exception:  # noqa: BLE001 - a summary of the repr is better than none
+        return value
+
+
 def _json(value: Any, redact_fields: list[str]) -> Any:
     return _clip(redact_keys(to_jsonable_python(value, fallback=str), redact_fields))
 
@@ -312,7 +320,7 @@ class TraceAgentCapability(AbstractCapability[Any]):
                 metadata={
                     **base_metadata,
                     **_usage_metadata(getattr(result, "usage", None)),
-                    "output_summary": summarize_value(output, self.redact_fields),
+                    "output_summary": summarize_value(_plain(output), self.redact_fields, sort_keys=False),
                     "output_hash": stable_hash(output),
                 },
             ),
@@ -331,9 +339,10 @@ class TraceAgentCapability(AbstractCapability[Any]):
 
         step_id = _new_step_id("llm")
         parent_step_id = _CURRENT_STEP.get()
-        model_id = getattr(request_context, "model_id", None)
-        # The provider is known before the model answers: both rows of the call say the same thing about it.
-        provider = getattr(getattr(request_context, "model", None), "system", None)
+        model = getattr(request_context, "model", None)
+        # The model and its provider are known before the model answers: both rows of the call say the same about them.
+        model_id = getattr(request_context, "model_id", None) or getattr(model, "model_name", None)
+        provider = getattr(model, "system", None)
         started_at = time.perf_counter()
         metadata = {
             "message_count": len(getattr(request_context, "messages", None) or []),
@@ -459,7 +468,7 @@ class TraceAgentCapability(AbstractCapability[Any]):
                     {
                         **result,
                         "status": "succeeded",
-                        "output_summary": summarize_value(output, self.redact_fields),
+                        "output_summary": summarize_value(_plain(output), self.redact_fields, sort_keys=False),
                         "output": self._whole_output(output),
                         "output_hash": stable_hash(output),
                         "duration_ms": _elapsed_ms(started_at),

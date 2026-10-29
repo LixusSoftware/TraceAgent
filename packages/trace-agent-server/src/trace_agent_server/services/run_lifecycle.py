@@ -157,7 +157,7 @@ def complete_run(
 
     The summary of the output is always kept; the whole output only with ``capture_full``.
     """
-    final_summary = summarize_value(final_output) if final_output is not None else "Run finished without final output."
+    final_summary = summarize_value(final_output, sort_keys=False) if final_output is not None else "Run finished without final output."
     run.final_output_summary = final_summary
     run.status = "completed"
     run.ended_at = ended_at or utcnow()

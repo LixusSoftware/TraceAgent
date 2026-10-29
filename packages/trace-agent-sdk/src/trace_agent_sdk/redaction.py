@@ -45,12 +45,16 @@ def redact_keys(value: Any, redact_fields: list[str] | None = None) -> Any:
     return value
 
 
-def summarize_value(value: Any, redact_fields: list[str] | None = None, max_length: int = 220) -> str:
+def summarize_value(
+    value: Any, redact_fields: list[str] | None = None, max_length: int = 220, *, sort_keys: bool = True
+) -> str:
+    """A short text for a value. Keys are sorted so equal values give equal summaries (arguments are compared);
+    ``sort_keys=False`` keeps the order the data came in, for results people read (the decisive key may be last)."""
     redacted = redact_payload(value, redact_fields)
     if isinstance(redacted, str):
         return redacted
     # Keep accents and other non-ASCII text readable: the summary is shown to people as it is.
-    rendered = json.dumps(redacted, ensure_ascii=False, sort_keys=True, default=str)
+    rendered = json.dumps(redacted, ensure_ascii=False, sort_keys=sort_keys, default=str)
     if len(rendered) <= max_length:
         return rendered
     return f"{rendered[: max_length - 3]}..."

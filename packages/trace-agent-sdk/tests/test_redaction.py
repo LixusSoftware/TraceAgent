@@ -63,6 +63,10 @@ class TestSummarizeValue:
     def test_dicts_are_rendered_as_sorted_json(self) -> None:
         assert summarize_value({"b": 1, "a": 2}) == '{"a": 2, "b": 1}'
 
+    def test_keys_can_keep_the_order_they_came_in_so_the_decisive_one_is_not_cut_off_last(self) -> None:
+        assert summarize_value({"zeta": 1, "alfa": 2}, sort_keys=False) == '{"zeta": 1, "alfa": 2}'
+        assert summarize_value({"zeta": 1, "alfa": 2}) == '{"alfa": 2, "zeta": 1}'
+
     def test_output_is_capped_at_max_length(self) -> None:
         summary = summarize_value({"items": list(range(500))}, max_length=50)
         assert len(summary) == 50

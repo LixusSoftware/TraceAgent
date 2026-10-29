@@ -372,7 +372,7 @@ def _tool_steps(session: Session, run: Run, span: SpanRecord, capture_full: bool
         parent_step_id=span.parent_span_id,
         status="failed" if failed else "succeeded",
         args=redact_payload(arguments if isinstance(arguments, dict) else {"input": arguments} if arguments is not None else {}),
-        output_summary=summarize_value(_readable(result_text)) if result_text is not None else None,
+        output_summary=summarize_value(_readable(result_text), sort_keys=False) if result_text is not None else None,
         output=_parse_json(result_text) if result_text is not None and not failed else None,
         output_hash=stable_hash(result_text if not failed else {"error": message}),
         error_code=code,

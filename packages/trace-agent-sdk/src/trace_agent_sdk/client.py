@@ -526,7 +526,7 @@ class RunSession:
                 "step_id": call["step_id"],
                 "status": "succeeded",
                 "args": redact_payload(arguments, binding.redact_fields),
-                "output_summary": summarize_value(output, binding.redact_fields),
+                "output_summary": summarize_value(output, binding.redact_fields, sort_keys=False),
                 "output": _whole_output(output, binding.redact_fields),
                 "output_hash": stable_hash(output),
                 "duration_ms": duration_ms,

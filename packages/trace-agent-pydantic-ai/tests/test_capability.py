@@ -15,11 +15,20 @@ import pytest
 
 pytest.importorskip("pydantic_ai")
 
+from pydantic import BaseModel
 from pydantic_ai import Agent, ModelRetry
 from pydantic_ai.messages import ModelResponse, TextPart, ToolCallPart
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 from pydantic_ai.models.test import TestModel
 from trace_agent_pydantic_ai import TraceAgentCapability, current_step_id
+
+
+class Verdict(BaseModel):
+    """What a tool returns when it answers with an object instead of a dict."""
+
+    veredicto: str
+    ventana: list[float]
+    parametro: str
 
 
 @pytest.fixture
@@ -125,6 +134,30 @@ class TestModelRequests:
         assert started["provider"] == completed["provider"] == "function"
         assert started["input_summary"].startswith("Model request to ")
         assert completed["input_summary"] == "Model responded via function"
+
+    async def test_the_request_row_names_the_model(self, run_session, posts) -> None:
+        model = FunctionModel(lambda m, i: ModelResponse(parts=[TextPart("hi")]), model_name="demo-model")
+        await Agent(model, name="a", capabilities=[TraceAgentCapability(run_session)]).run("hello")
+
+        started = observations(posts, "llm_call")[0]
+        assert started["model"] == "demo-model"
+        assert started["input_summary"] == "Model request to demo-model"
+
+    async def test_an_object_returned_by_a_tool_is_summarized_as_json_in_the_order_it_has(self, run_session, posts) -> None:
+        agent = Agent(
+            FunctionModel(lambda m, i: ModelResponse(parts=[ToolCallPart("check", {})]) if len(m) == 1 else ModelResponse(parts=[TextPart("ok")])),
+            name="a", capabilities=[TraceAgentCapability(run_session)],
+        )
+
+        @agent.tool_plain
+        def check() -> Verdict:
+            return Verdict(veredicto="causa", ventana=[18.0, 25.0], parametro="tiempo_enfriamiento_s")
+
+        await agent.run("go")
+
+        summary = tool_results(posts)[-1]["output_summary"]
+        assert summary.startswith('{"veredicto": "causa", "ventana": [18.0, 25.0]')  # not "veredicto='causa' ..." and not sorted
+        assert "'" not in summary
 
     async def test_a_call_carries_what_was_asked_and_what_was_answered(self, run_session, posts) -> None:
         agent = Agent(FunctionModel(lambda m, i: ModelResponse(parts=[TextPart("El OEE bajó")])), name="a", instructions="Be brief.", capabilities=[TraceAgentCapability(run_session)])

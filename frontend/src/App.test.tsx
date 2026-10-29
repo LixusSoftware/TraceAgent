@@ -140,15 +140,15 @@ describe("App", () => {
   it("opens the first run and shows its timeline", async () => {
     renderApp();
 
-    expect(await screen.findByText("get_weather")).toBeInTheDocument();
+    // The first level is open, so the events of the step are visible without a click.
+    expect(await screen.findByText("weather in Madrid")).toBeInTheDocument();
     expect(mocked.getTimeline).toHaveBeenCalledWith("run-1");
   });
 
   it("does not keep showing the event selected in another run in the inspector", async () => {
     renderApp();
 
-    // Open the group of the first run and inspect one of its events.
-    fireEvent.click(await screen.findByText("get_weather"));
+    // Inspect one of the events of the first run.
     fireEvent.click(await screen.findByText("weather in Madrid"));
     await waitFor(() => expect(screen.getAllByText("weather in Madrid").length).toBeGreaterThan(1));
 
@@ -157,5 +157,36 @@ describe("App", () => {
     await screen.findByText("goal of second-agent", { selector: "p.text-xs" });
 
     expect(screen.queryByText("weather in Madrid")).not.toBeInTheDocument();
+  });
+
+  it("does not show the previous run's data in the inspector while the next run loads", async () => {
+    let finishLoading: (value: RunOverview) => void = () => {};
+    renderApp();
+    await screen.findByText("weather in Madrid");
+
+    mocked.getRun.mockImplementationOnce(() => new Promise<RunOverview>((resolve) => { finishLoading = resolve }));
+    fireEvent.click(screen.getByText("second-agent"));
+
+    // While the second run is loading, nothing of the first one is left on screen.
+    expect(await screen.findAllByText("Loading run...")).not.toHaveLength(0);
+    expect(screen.queryByText("goal of first-agent", { selector: "p.text-xs" })).not.toBeInTheDocument();
+
+    finishLoading(overview(second));
+    expect(await screen.findByText("goal of second-agent", { selector: "p.text-xs" })).toBeInTheDocument();
+  });
+
+  it("refreshes the list of runs every few seconds so a new run shows up while it runs", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      renderApp();
+      await screen.findByText("weather in Madrid");
+      const before = mocked.listRuns.mock.calls.length;
+
+      await vi.advanceTimersByTimeAsync(3500);
+
+      expect(mocked.listRuns.mock.calls.length).toBeGreaterThan(before);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

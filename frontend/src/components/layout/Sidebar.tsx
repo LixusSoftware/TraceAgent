@@ -44,12 +44,14 @@ export function Sidebar({ runs, selectedRunId, onSelectRun }: SidebarProps) {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search runs..."
+            aria-label="Search runs"
             className="w-full pl-7 pr-2 py-1.5 text-xs bg-bg border border-line rounded-md focus:outline-none focus:border-accent placeholder:text-muted"
           />
         </div>
         <div className="flex gap-2 mt-2">
           <select
             value={statusFilter}
+            aria-label="Filter runs by status"
             onChange={(e) => setStatusFilter(e.target.value)}
             className="flex-1 text-[11px] bg-bg border border-line rounded px-2 py-1 focus:outline-none focus:border-accent"
           >
@@ -61,6 +63,8 @@ export function Sidebar({ runs, selectedRunId, onSelectRun }: SidebarProps) {
           {(search || statusFilter) && (
             <button
               onClick={() => { setSearch(""); setStatusFilter("") }}
+              aria-label="Clear filters"
+              title="Clear filters"
               className="px-2 py-1 text-[11px] text-muted hover:text-text border border-line rounded hover:bg-surface-strong transition-colors"
             >
               <FilterX className="w-3 h-3" />

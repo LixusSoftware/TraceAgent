@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  argsSummary,
+  commandTitle,
   decisionKindLabel,
   eventNodeLabel,
   eventTitle,
@@ -7,6 +9,7 @@ import {
   outcomeLabel,
   statusLabel,
   tokensLabel,
+  truncate,
 } from "./humanize";
 import type { EventItem, TimelineGroup } from "../types";
 
@@ -78,6 +81,74 @@ describe("groupTitle", () => {
 
   it("keeps the server label for commands and files, which are already readable", () => {
     expect(groupTitle(group("src/app.py", [event("file.written")]))).toBe("src/app.py");
+  });
+});
+
+describe("commandTitle / truncate", () => {
+  it("uses the first comment of a script, which says what the step does", () => {
+    const script = "python -c \n# Leer las paradas de la línea 2\nimport json\nlineas = leer()\nprint(lineas)";
+
+    expect(commandTitle(script)).toBe("Leer las paradas de la línea 2");
+  });
+
+  it("without a comment, uses the first line that is not an import", () => {
+    expect(commandTitle("python -c \nimport json\nfrom os import path\nlineas = leer()\nprint(lineas)")).toBe("lineas = leer()");
+  });
+
+  it("falls back to the first line when everything is an import", () => {
+    expect(commandTitle("python -c import json")).toBe("import json");
+  });
+
+  it("leaves an ordinary command as it is and cuts a long one", () => {
+    expect(commandTitle("pytest -q packages/sdk")).toBe("pytest -q packages/sdk");
+    const long = commandTitle(`python3 -c ${"x = 1; ".repeat(40)}`);
+    expect(long.length).toBe(72);
+    expect(long.endsWith("…")).toBe(true);
+  });
+
+  it("collapses whitespace when it truncates", () => {
+    expect(truncate("a   b\n\n c", 20)).toBe("a b c");
+    expect(truncate("abcdefghij", 5)).toBe("abcd…");
+  });
+
+  it("titles a command group with its short title", () => {
+    const events = [event("command.started"), event("command.failed")];
+
+    expect(groupTitle(group("python -c \nvalor = 1\nprint(valor)", events))).toBe("valor = 1");
+    expect(groupTitle(group("python -c # Sumar\nvalor = 1", events))).toBe("Sumar");
+  });
+});
+
+describe("argsSummary", () => {
+  const toolGroup = (started: EventItem) => group("search", [started, event("tool.succeeded")], "search");
+
+  it("lists the arguments as name=value", () => {
+    const started = event("tool.started", { payload_full: { args: { parametro: "temp_molde_C", limite: 80, activo: true } } });
+
+    expect(argsSummary(toolGroup(started))).toBe("parametro=temp_molde_C, limite=80, activo=true");
+  });
+
+  it("falls back to the stored summary when the full arguments were not kept", () => {
+    const started = event("tool.started", { metadata: { args_summary: '{"q": "pasta", "n": 2}' } });
+
+    expect(argsSummary(toolGroup(started))).toBe("q=pasta, n=2");
+  });
+
+  it("reads a summary that was cut in the middle", () => {
+    const started = event("tool.started", { metadata: { args_summary: '{"q": "pasta fresca de la ca...' } });
+
+    expect(argsSummary(toolGroup(started))).toContain("pasta fresca");
+  });
+
+  it("is empty for a tool without arguments or a group that is not a tool", () => {
+    expect(argsSummary(toolGroup(event("tool.started", { payload_full: { args: {} } })))).toBeNull();
+    expect(argsSummary(group("run.started", [event("run.started")]))).toBeNull();
+  });
+
+  it("cuts a long list of arguments", () => {
+    const started = event("tool.started", { payload_full: { args: { texto: "x".repeat(300) } } });
+
+    expect(argsSummary(toolGroup(started), 40)?.length).toBe(40);
   });
 });
 

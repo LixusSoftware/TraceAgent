@@ -1,11 +1,16 @@
 import { useMemo, useState } from "react"
-import { ChevronDown, ChevronRight, Clock, AlertCircle, CheckCircle2, Loader2 } from "lucide-react"
+import { ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Clock, AlertCircle, CheckCircle2, Loader2 } from "lucide-react"
 import type { TimelineResponse, EventItem, TimelineGroup } from "../../types"
 import { EventIcon } from "./EventIcon"
 import { formatDuration, formatWhen } from "../../lib/utils"
-import { groupTitle } from "../../lib/humanize"
+import { argsSummary, groupTitle } from "../../lib/humanize"
 
 type TimelineRow = { seq: number; event: EventItem } | { seq: number; child: TimelineGroup }
+
+/** A group has something to open when it holds several events or has child groups. */
+function hasNested(group: TimelineGroup, childrenByParent: Map<string, TimelineGroup[]>): boolean {
+  return group.events.length > 1 || group.event_count > group.events.length || childrenByParent.has(group.step_id)
+}
 
 interface TimelineProps {
   timeline: TimelineResponse | null
@@ -15,7 +20,9 @@ interface TimelineProps {
 }
 
 export function Timeline({ timeline, selectedEvent, onSelectEvent, isLoading }: TimelineProps) {
-  const [expandedSteps, setExpandedSteps] = useState<Set<string>>(new Set())
+  // What the person expanded or collapsed, kept with the run it was for. Until they touch anything the
+  // first level is open, so the model calls and tools of a run are visible without a click.
+  const [choice, setChoice] = useState<{ runId: string; expanded: Set<string> } | null>(null)
 
   const { roots, childrenByParent } = useMemo(() => {
     const roots: TimelineGroup[] = []
@@ -45,14 +52,25 @@ export function Timeline({ timeline, selectedEvent, onSelectEvent, isLoading }: 
     return maxEnd
   }, [timeline])
 
+  const expandable = useMemo(
+    () => (timeline?.groups ?? []).filter((group) => hasNested(group, childrenByParent)).map((group) => group.step_id),
+    [timeline, childrenByParent],
+  )
+  const defaultOpen = useMemo(
+    () => new Set(roots.filter((group) => hasNested(group, childrenByParent)).map((group) => group.step_id)),
+    [roots, childrenByParent],
+  )
+  const runId = timeline?.run_id ?? ""
+  const expandedSteps = choice && choice.runId === runId ? choice.expanded : defaultOpen
+
   const toggleStep = (stepId: string) => {
-    setExpandedSteps((prev) => {
-      const next = new Set(prev)
-      if (next.has(stepId)) next.delete(stepId)
-      else next.add(stepId)
-      return next
-    })
+    const next = new Set(expandedSteps)
+    if (next.has(stepId)) next.delete(stepId)
+    else next.add(stepId)
+    setChoice({ runId, expanded: next })
   }
+  const expandAll = () => setChoice({ runId, expanded: new Set(expandable) })
+  const collapseAll = () => setChoice({ runId, expanded: new Set() })
 
   if (isLoading) {
     return (
@@ -77,9 +95,31 @@ export function Timeline({ timeline, selectedEvent, onSelectEvent, isLoading }: 
         <h3 className="text-xs font-semibold uppercase tracking-wider text-muted">
           Events
         </h3>
-        <span className="text-[10px] text-muted">
-          {timeline.groups.reduce((s, g) => s + g.events.length, 0)} events · {formatDuration(totalDuration)}
-        </span>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={expandAll}
+            aria-label="Expand all steps"
+            title="Expand all steps"
+            className="flex items-center gap-1 text-[10px] text-muted hover:text-text transition-colors"
+          >
+            <ChevronsUpDown className="w-3 h-3" aria-hidden="true" />
+            Expand all
+          </button>
+          <button
+            type="button"
+            onClick={collapseAll}
+            aria-label="Collapse all steps"
+            title="Collapse all steps"
+            className="flex items-center gap-1 text-[10px] text-muted hover:text-text transition-colors"
+          >
+            <ChevronsDownUp className="w-3 h-3" aria-hidden="true" />
+            Collapse all
+          </button>
+          <span className="text-[10px] text-muted">
+            {timeline.groups.reduce((s, g) => s + g.events.length, 0)} events · {formatDuration(totalDuration)}
+          </span>
+        </div>
       </div>
 
       <div className="space-y-0.5">
@@ -122,7 +162,9 @@ function TimelineGroupNode({
 }) {
   const isExpanded = expandedSteps.has(group.step_id)
   const childGroups = childrenByParent.get(group.step_id) ?? []
-  const hasChildren = group.events.length > 1 || group.event_count > group.events.length || childGroups.length > 0
+  const hasChildren = hasNested(group, childrenByParent)
+  const title = groupTitle(group)
+  const args = argsSummary(group)
   // Own events and child groups interleaved in the order they happened.
   const rows: TimelineRow[] = [
     ...group.events.map((event): TimelineRow => ({ seq: event.seq, event })),
@@ -141,7 +183,11 @@ function TimelineGroupNode({
   return (
     <div>
       <button
+        type="button"
         onClick={() => onToggle(group.step_id)}
+        aria-expanded={hasChildren ? isExpanded : undefined}
+        aria-label={`${title}${args ? ` (${args})` : ""}, ${group.event_count} events${hasChildren ? (isExpanded ? ", expanded" : ", collapsed") : ""}`}
+        title={group.label !== title ? group.label : undefined}
         className="flex items-center gap-1.5 w-full text-left py-1.5 px-2 rounded hover:bg-surface-strong transition-colors group"
         style={{ paddingLeft: `${depth * 16 + 8}px` }}
       >
@@ -157,9 +203,11 @@ function TimelineGroupNode({
         <EventIcon type={group.events[0]?.type ?? "unknown"} />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <span className="text-xs font-medium truncate">{groupTitle(group)}</span>
-            <StatusBadge status={group.status} />
+            <span className="text-xs font-medium truncate">{title}</span>
+            {/* "Run started" is only the beginning: how the run ended is shown by "Run finished" or "Run failed". */}
+            {group.events[0]?.type !== "run.started" && <StatusBadge status={group.status} />}
           </div>
+          {args && <p className="text-[10px] text-muted truncate font-mono">{args}</p>}
           {pct > 0 && (
             <div className="flex items-center gap-2 mt-1">
               <div className="flex-1 h-1 bg-line rounded-full overflow-hidden">
@@ -231,7 +279,9 @@ function TimelineEventRow({
 }) {
   return (
     <button
+      type="button"
       onClick={onSelect}
+      aria-pressed={isSelected}
       className={`flex items-center gap-2 w-full text-left py-1.5 px-2 rounded transition-colors ${
         isSelected ? "bg-accent/10" : "hover:bg-surface-strong"
       }`}
@@ -243,7 +293,8 @@ function TimelineEventRow({
           <p className={`text-xs truncate ${isSelected ? "text-accent font-medium" : "text-text"}`}>
             {event.summary}
           </p>
-          {event.status && <StatusBadge status={event.status} />}
+          {/* A "started" event has not finished: its badge would contradict the result shown on the step. */}
+          {event.status && !event.type.endsWith(".started") && <StatusBadge status={event.status} />}
         </div>
         {event.tool_name && (
           <p className="text-[10px] text-muted truncate">{event.tool_name}</p>

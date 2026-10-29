@@ -67,10 +67,24 @@ function AuditTab({ audit, loading }: { audit: AuditReport | null; loading: bool
     return <p className="text-xs text-muted">No audit data available.</p>;
   }
 
+  if (audit.guardrails_enabled === false) {
+    return (
+      <div className="space-y-1 text-xs">
+        <p className="font-medium">Guardrails are off, so nothing was checked.</p>
+        <p className="text-muted">
+          The security score rates a run from the prompt-injection, personal-data and secret checks of the server.
+          Turn them on with <code className="font-mono">TRACE_AGENT_AUDIT_ENABLE_GUARDRAILS=true</code> to get one.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-4 text-xs">
-        <span className="text-muted">Security Score:</span>
+        <span className="text-muted" title="100 minus a penalty for each blocked request, prompt injection, secret or personal-data finding">
+          Security Score:
+        </span>
         <span className={`font-semibold ${audit.security_score >= 80 ? "text-accent" : audit.security_score >= 50 ? "text-warning" : "text-danger"}`}>
           {audit.security_score}/100
         </span>

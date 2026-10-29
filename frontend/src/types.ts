@@ -497,6 +497,8 @@ export type DashboardResponse = {
 
 export type AuditReport = {
   run_id: string;
+  /** False when the server runs without guardrails: nothing was checked, so there is no real score. */
+  guardrails_enabled?: boolean;
   security_score: number;
   pii_hit_count: number;
   injection_hit_count: number;

@@ -126,7 +126,7 @@ export function LaunchConsole({ onLaunch }: LaunchConsoleProps) {
           <button
             type="submit"
             disabled={loading}
-            className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-medium rounded-md bg-accent text-white hover:bg-accent-hover disabled:opacity-50 transition-colors"
+            className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-medium rounded-md bg-accent text-bg hover:bg-accent-hover disabled:opacity-50 transition-colors"
           >
             <Play className="w-3.5 h-3.5" />
             {loading ? "Launching..." : "EXEC"}

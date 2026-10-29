@@ -7,6 +7,7 @@ import {
   outcomeLabel,
   statusLabel,
   tokensLabel,
+  truncate,
 } from "../../lib/humanize"
 import { JsonViewer } from "../JsonViewer"
 
@@ -16,10 +17,12 @@ interface InspectorProps {
   selectedGraphNode?: GraphNode | null
   /** Every event of the open run, to resolve what a graph node or decision refers to. */
   events?: EventItem[]
+  /** A run is being loaded: say so instead of inviting to select one. */
+  isLoading?: boolean
   onSelectEvent?: (event: EventItem) => void
 }
 
-export function Inspector({ overview, selectedEvent, selectedGraphNode, events = [], onSelectEvent }: InspectorProps) {
+export function Inspector({ overview, selectedEvent, selectedGraphNode, events = [], isLoading = false, onSelectEvent }: InspectorProps) {
   return (
     <aside className="w-[340px] min-w-[340px] border-l border-line bg-surface-strong flex flex-col shrink-0 overflow-hidden">
       <div className="px-4 py-2 border-b border-line flex items-center justify-between">
@@ -33,7 +36,9 @@ export function Inspector({ overview, selectedEvent, selectedGraphNode, events =
         ) : overview ? (
           <RunInspector overview={overview} />
         ) : (
-          <p className="text-xs text-muted text-center py-8">Select a run, event, or graph node to inspect.</p>
+          <p className="text-xs text-muted text-center py-8">
+            {isLoading ? "Loading run..." : "Select a run, event, or graph node to inspect."}
+          </p>
         )}
       </div>
     </aside>
@@ -156,13 +161,14 @@ function RunInspector({ overview }: { overview: RunOverview }) {
             {overview.flags.map((f, i) => (
               <span
                 key={i}
+                title={f.label}
                 className={`text-[10px] px-1.5 py-0.5 rounded border ${
                   f.type === "error" ? "border-danger/30 text-danger bg-danger/10" :
                   f.type === "warning" ? "border-warning/30 text-warning bg-warning/10" :
                   "border-info/30 text-info bg-info/10"
                 }`}
               >
-                {f.label}
+                {truncate(f.label, 140)}
               </span>
             ))}
           </div>

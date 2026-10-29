@@ -40,7 +40,7 @@ export function Header({
             onClick={() => onWorkspaceChange("dashboard")}
             className={`flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded transition-colors ${
               workspaceMode === "dashboard"
-                ? "bg-accent text-white"
+                ? "bg-accent text-bg"
                 : "text-muted hover:text-text"
             }`}
           >
@@ -51,7 +51,7 @@ export function Header({
             onClick={() => onWorkspaceChange("run")}
             className={`flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded transition-colors ${
               workspaceMode === "run"
-                ? "bg-accent text-white"
+                ? "bg-accent text-bg"
                 : "text-muted hover:text-text"
             }`}
           >
@@ -62,7 +62,7 @@ export function Header({
             onClick={() => onWorkspaceChange("compare")}
             className={`flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded transition-colors ${
               workspaceMode === "compare"
-                ? "bg-accent text-white"
+                ? "bg-accent text-bg"
                 : "text-muted hover:text-text"
             }`}
           >

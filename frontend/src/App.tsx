@@ -37,8 +37,9 @@ export default function App() {
 
   // Data of a run or view that is no longer selected is hidden by deriving it here,
   // instead of resetting state from inside effects.
-  const overview = selectedRunId ? loadedOverview : null
-  const timeline = selectedRunId ? loadedTimeline : null
+  // The data of the previous run must not stay on screen while the new one loads.
+  const overview = selectedRunId && loadedRunId === selectedRunId ? loadedOverview : null
+  const timeline = selectedRunId && loadedRunId === selectedRunId ? loadedTimeline : null
   const dashboard = workspaceMode === "dashboard" ? loadedDashboard : null
   const isLoading = selectedRunId !== null && loadedRunId !== selectedRunId
   // The inspector only shows what was selected in the run that is open.
@@ -82,6 +83,8 @@ export default function App() {
       .catch(() => {
         if (isCurrent) {
           setError("Failed to load run data")
+          setOverview(null)
+          setTimeline(null)
           setLoadedRunId(selectedRunId)
         }
       })
@@ -216,7 +219,7 @@ export default function App() {
             <CompareView runs={runs} />
           ) : !overview ? (
             <div className="flex-1 flex items-center justify-center text-muted">
-              <p>Select a run or launch a new agent.</p>
+              <p>{isLoading ? "Loading run..." : "Select a run or launch a new agent."}</p>
             </div>
           ) : (
             <>
@@ -238,6 +241,7 @@ export default function App() {
                 <ExecutionGraph
                   runId={selectedRunId}
                   view="decisions"
+                  runStatus={overview.status}
                   onSelectNode={handleSelectGraphNode}
                 />
               )}
@@ -258,6 +262,7 @@ export default function App() {
             selectedEvent={selectedEvent}
             selectedGraphNode={selectedGraphNode}
             events={runEvents}
+            isLoading={isLoading}
             onSelectEvent={handleSelectEvent}
           />
         )}

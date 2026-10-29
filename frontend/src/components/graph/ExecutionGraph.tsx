@@ -10,12 +10,14 @@ import {
 } from "@xyflow/react";
 import type { GraphResponse, GraphNode, GraphEdge } from "../../types";
 import { api } from "../../api";
-import { decisionKindLabel, eventNodeLabel } from "../../lib/humanize";
+import { decisionKindLabel, eventNodeLabel, truncate } from "../../lib/humanize";
 import { GitBranch, Map } from "lucide-react";
 
 interface ExecutionGraphProps {
   runId: string | null;
   view?: "execution" | "decisions";
+  /** Status of the open run: decisions only exist once it has ended. */
+  runStatus?: string | null;
   onSelectNode?: (node: GraphNode | null) => void;
 }
 
@@ -38,7 +40,8 @@ function buildFlowNodes(nodes: GraphNode[]): Node[] {
       id: node.id,
       type: "default",
       position: node.position,
-      data: { label: node.type === "event" ? eventNodeLabel(node.label, node.data?.toolName) : node.label, ...node.data },
+      // A long label (a whole script, for example) would make a huge node: the full text is in the inspector.
+      data: { ...node.data, label: truncate(node.type === "event" ? eventNodeLabel(node.label, node.data?.toolName) : node.label, 60) },
       draggable: false,
       selectable: true,
       sourcePosition: Position.Bottom,
@@ -47,10 +50,10 @@ function buildFlowNodes(nodes: GraphNode[]): Node[] {
         borderRadius: 6,
         border: `1px solid ${style.border}`,
         padding: "8px 12px",
-        width: 160,
+        width: 190,
         background: style.background,
         color: "#e5e5e5",
-        fontSize: 10,
+        fontSize: 12,
         fontFamily: "monospace",
         boxShadow: `0 0 0 1px ${style.border}20`,
       },
@@ -71,7 +74,7 @@ function buildFlowEdges(edges: GraphEdge[]): Edge[] {
   }));
 }
 
-export function ExecutionGraph({ runId, view = "execution", onSelectNode }: ExecutionGraphProps) {
+export function ExecutionGraph({ runId, view = "execution", runStatus, onSelectNode }: ExecutionGraphProps) {
   const [loaded, setLoaded] = useState<{ key: string; data: GraphResponse | null } | null>(null);
   const [showMinimap, setShowMinimap] = useState(false);
   // Loading and the graph itself are derived from which run/view the data was loaded for,
@@ -106,9 +109,11 @@ export function ExecutionGraph({ runId, view = "execution", onSelectNode }: Exec
   }
 
   if (!graph || graph.nodes.length === 0) {
+    const waiting = view === "decisions" && runStatus === "running";
     return (
-      <div className="flex-1 flex items-center justify-center text-muted text-sm">
-        No graph data available.
+      <div className="flex-1 flex flex-col items-center justify-center gap-1 text-muted text-sm text-center px-6">
+        <p>{waiting ? "Decisions appear when the run finishes." : "No graph data available."}</p>
+        {waiting && <p className="text-xs">This run is still running. Its steps are already in the Timeline.</p>}
       </div>
     );
   }
@@ -122,6 +127,11 @@ export function ExecutionGraph({ runId, view = "execution", onSelectNode }: Exec
           <span className="text-[10px] text-muted bg-surface-strong px-1.5 py-0.5 rounded">
             {graph.nodes.length} nodes · {graph.edges.length} edges
           </span>
+          {view === "decisions" && (
+            <span className="text-[10px] text-muted">
+              The key choices of the run: which tool was picked, retries and recoveries. Select one for its detail.
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2 text-[10px] text-muted">

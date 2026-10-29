@@ -12,7 +12,8 @@ class Base(DeclarativeBase):
 
 
 def create_session_factory(database_url: str) -> tuple[object, sessionmaker[Session]]:
-    connect_args = {"check_same_thread": False} if database_url.startswith("sqlite") else {}
+    # SQLite lets one writer at a time: a request that finds the database busy waits for it instead of failing.
+    connect_args = {"check_same_thread": False, "timeout": 30} if database_url.startswith("sqlite") else {}
     engine = create_engine(database_url, connect_args=connect_args, future=True)
     session_factory = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
     return engine, session_factory

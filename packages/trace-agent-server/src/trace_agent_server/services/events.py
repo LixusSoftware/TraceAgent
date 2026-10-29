@@ -4,6 +4,7 @@ import asyncio
 from datetime import datetime, timezone
 from typing import Any
 
+from sqlalchemy import update
 from sqlalchemy.orm import Session
 
 from trace_agent_server.models import Artifact, Event, Run
@@ -66,8 +67,11 @@ def record_event(
     timestamp: datetime | None = None,
 ) -> Event:
     """Record an event; ``timestamp`` overrides "now" for sources that report when it happened."""
-    run.last_event_seq += 1
-    run.updated_at = utcnow()
+    # The database increments the counter, it is not computed here: two requests writing to the same run at once
+    # (the agent recording by hand while the capability posts from its thread) would read the same value and
+    # collide on (run_id, seq). The second request waits for the first one's commit and gets the next number.
+    session.execute(update(Run).where(Run.id == run.id).values(last_event_seq=Run.last_event_seq + 1, updated_at=utcnow()))
+    session.refresh(run, ["last_event_seq"])
     event = Event(
         run_id=run.id,
         turn_id=turn_id,

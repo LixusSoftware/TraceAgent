@@ -224,6 +224,29 @@ class TestToolsAndTurns:
         assert "abc123" not in payload["output_summary"]
         assert "[redacted]" in payload["output_summary"]
 
+    def test_redacted_arguments_are_masked_in_what_is_reported_but_the_tool_gets_them(self, run) -> None:
+        received: dict = {}
+
+        @run.tool(redact_fields=["api_key"])
+        def charge(customer: str, api_key: str) -> dict:
+            received.update(customer=customer, api_key=api_key)
+            return {"ok": True}
+
+        payload, _ = run._execute_tool({"id": "c", "name": "charge", "arguments": {"customer": "ana", "api_key": "SECRET"}, "step_id": "s"})
+
+        assert received == {"customer": "ana", "api_key": "SECRET"}
+        assert payload["args"] == {"customer": "ana", "api_key": "[redacted]"}
+
+    def test_redacted_arguments_are_masked_when_the_tool_fails_too(self, run) -> None:
+        @run.tool(redact_fields=["api_key"])
+        def charge(customer: str, api_key: str) -> dict:
+            raise ValueError("declined")
+
+        payload, _ = run._execute_tool({"id": "c", "name": "charge", "arguments": {"customer": "ana", "api_key": "SECRET"}, "step_id": "s"})
+
+        assert payload["status"] == "failed"
+        assert payload["args"]["api_key"] == "[redacted]"
+
 
 class TestIntegrationsFactories:
     def test_langchain_callback_is_bound_to_the_run(self, run) -> None:

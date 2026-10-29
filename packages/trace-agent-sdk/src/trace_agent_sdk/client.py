@@ -13,7 +13,7 @@ from uuid import uuid4
 
 import httpx
 
-from trace_agent_sdk.redaction import stable_hash, summarize_value
+from trace_agent_sdk.redaction import redact_payload, stable_hash, summarize_value
 
 
 TYPE_MAP = {
@@ -512,7 +512,7 @@ class RunSession:
                 "name": binding.name,
                 "step_id": call["step_id"],
                 "status": "succeeded",
-                "args": arguments,
+                "args": redact_payload(arguments, binding.redact_fields),
                 "output_summary": summarize_value(output, binding.redact_fields),
                 "output_hash": stable_hash(output),
                 "duration_ms": duration_ms,
@@ -531,7 +531,7 @@ class RunSession:
                 "name": binding.name,
                 "step_id": call["step_id"],
                 "status": "failed",
-                "args": arguments,
+                "args": redact_payload(arguments, binding.redact_fields),
                 "output_summary": None,
                 "output_hash": stable_hash({"error": str(exc)}),
                 "error_code": type(exc).__name__,

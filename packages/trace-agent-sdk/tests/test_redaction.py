@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from trace_agent_sdk.redaction import redact_payload, stable_hash, summarize_value
+from trace_agent_sdk.redaction import redact_keys, redact_payload, stable_hash, summarize_value
 
 
 class TestStableHash:
@@ -36,6 +36,24 @@ class TestRedactPayload:
 
     def test_leaves_other_types_untouched(self) -> None:
         assert redact_payload({"n": 3, "ok": True, "none": None}) == {"n": 3, "ok": True, "none": None}
+
+
+class TestRedactKeys:
+    def test_masks_listed_keys_at_any_depth_and_keeps_the_rest_in_full(self) -> None:
+        long_text = "x" * 500
+        payload = {"api_key": "k", "nested": {"api_key": "k2", "text": long_text}, "items": [{"api_key": "k3"}]}
+
+        masked = redact_keys(payload, ["api_key"])
+
+        assert masked == {"api_key": "[redacted]", "nested": {"api_key": "[redacted]", "text": long_text}, "items": [{"api_key": "[redacted]"}]}
+
+    def test_does_not_mutate_the_input_and_ignores_an_empty_list(self) -> None:
+        payload = {"api_key": "k"}
+
+        assert redact_keys(payload, ["api_key"]) == {"api_key": "[redacted]"}
+        assert payload == {"api_key": "k"}
+        assert redact_keys(payload, []) is payload
+        assert redact_keys(payload, None) is payload
 
 
 class TestSummarizeValue:

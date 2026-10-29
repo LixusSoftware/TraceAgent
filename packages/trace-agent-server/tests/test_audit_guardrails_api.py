@@ -137,3 +137,19 @@ def test_metrics_endpoint_is_available_when_enabled(tmp_path) -> None:
     body = metrics.text
     assert "TRACE_AGENT_http_requests_total" in body
     assert "TRACE_AGENT_http_request_duration_seconds" in body
+
+
+def test_audit_says_guardrails_are_off_by_default(tmp_path) -> None:
+    client = build_client(tmp_path, CountingProvider())
+
+    report = client.get(f"/api/runs/{_create_run(client)}/audit").json()
+
+    assert report["guardrails_enabled"] is False
+
+
+def test_audit_says_guardrails_are_on_when_enabled(tmp_path) -> None:
+    client = build_client(tmp_path, CountingProvider(), audit_enable_guardrails=True)
+
+    report = client.get(f"/api/runs/{_create_run(client)}/audit").json()
+
+    assert report["guardrails_enabled"] is True

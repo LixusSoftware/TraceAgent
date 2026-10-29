@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from trace_agent_server.db import get_session
 from trace_agent_server.models import Artifact, Decision, Event, Run, Turn
-from trace_agent_sdk.redaction import stable_hash, summarize_value
+from trace_agent_sdk.redaction import redact_keys, stable_hash, summarize_value
 from trace_agent_server.schemas import (
     ArtifactOut,
     DashboardResponse,
@@ -36,6 +36,7 @@ from trace_agent_server.schemas import (
     TurnCreateResponse,
     TurnOut,
 )
+from trace_agent_server.services.stored_redaction import redact_messages, redact_tool_calls
 from trace_agent_server.services.analytics import build_similar_runs, build_tool_graph, build_tool_metrics
 from trace_agent_server.services.compare import compare_runs
 from trace_agent_server.services.events import create_artifact, record_event
@@ -295,6 +296,8 @@ def create_turn(
             raise HTTPException(status_code=400, detail="Input blocked by guardrails.")
 
     tool_redaction = {tool.name: tool.redact_fields for tool in payload.tools}
+    # What is stored is a masked copy; the provider and the agent keep the real data.
+    stored_messages = redact_messages(sanitized_messages, tool_redaction)
     if payload.tools:
         run.run_metadata = {
             **run.run_metadata,
@@ -315,7 +318,7 @@ def create_turn(
         provider=payload.provider,
         model=payload.model,
         payload_hash=stable_hash(sanitized_messages),
-        payload_full={"messages": sanitized_messages} if capture_full else None,
+        payload_full={"messages": stored_messages} if capture_full else None,
         metadata={
             "registered_tool_count": len(payload.tools),
             "tool_names": [tool.name for tool in payload.tools],
@@ -355,6 +358,10 @@ def create_turn(
     run.provider = payload.provider
     run.model = payload.model
 
+    stored_assistant_message = (
+        redact_messages([response.assistant_message], tool_redaction)[0] if response.assistant_message else None
+    )
+
     # Create Turn record with full messages and token usage
     usage = response.metadata.get("usage", {}) if response.metadata else {}
     turn = Turn(
@@ -362,9 +369,12 @@ def create_turn(
         seq=run.last_event_seq + 1,
         provider=payload.provider,
         model=payload.model,
-        messages=sanitized_messages,
-        assistant_message=response.assistant_message,
-        tool_calls=[{"id": c.id, "name": c.name, "arguments": c.arguments, "step_id": c.step_id} for c in response.tool_calls],
+        messages=stored_messages,
+        assistant_message=stored_assistant_message,
+        tool_calls=redact_tool_calls(
+            [{"id": c.id, "name": c.name, "arguments": c.arguments, "step_id": c.step_id} for c in response.tool_calls],
+            tool_redaction,
+        ),
         prompt_tokens=usage.get("prompt_tokens"),
         completion_tokens=usage.get("completion_tokens"),
         total_tokens=usage.get("total_tokens"),
@@ -409,7 +419,7 @@ def create_turn(
         provider=payload.provider,
         model=payload.model,
         payload_hash=stable_hash(response.assistant_message or [tool_call.__dict__ for tool_call in response.tool_calls]),
-        payload_full={"assistant_message": response.assistant_message, "tool_calls": turn.tool_calls} if capture_full else None,
+        payload_full={"assistant_message": stored_assistant_message, "tool_calls": turn.tool_calls} if capture_full else None,
         turn_id=turn.id,
         metadata=response_metadata,
     )
@@ -430,7 +440,7 @@ def create_turn(
             model=payload.model,
             tool_name=call.name,
             payload_hash=stable_hash(call.arguments),
-            payload_full={"arguments": call.arguments} if capture_full else None,
+            payload_full={"arguments": redact_keys(call.arguments, tool_redaction.get(call.name, []))} if capture_full else None,
             turn_id=turn.id,
             metadata={"call_id": call.id},
         )
@@ -962,7 +972,7 @@ def get_artifacts(run_id: str, session: Session = Depends(get_session)) -> list[
 
 
 @router.get("/runs/{run_id}/audit")
-def get_run_audit(run_id: str, session: Session = Depends(get_session)) -> dict[str, Any]:
+def get_run_audit(run_id: str, request: Request, session: Session = Depends(get_session)) -> dict[str, Any]:
     """Return a structured audit report for a run based on guardrail events."""
     run = _get_run_or_404(session, run_id)
     events = list(session.scalars(select(Event).where(Event.run_id == run_id).order_by(Event.seq)))
@@ -1020,6 +1030,8 @@ def get_run_audit(run_id: str, session: Session = Depends(get_session)) -> dict[
 
     return {
         "run_id": run_id,
+        # Without guardrails nothing is checked, so the score would only be a meaningless 100.
+        "guardrails_enabled": bool(getattr(request.app.state.settings, "audit_enable_guardrails", False)),
         "security_score": security_score,
         "pii_hit_count": pii_hit_count,
         "injection_hit_count": injection_hit_count,

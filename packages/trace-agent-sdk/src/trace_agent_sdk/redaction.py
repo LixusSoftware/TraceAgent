@@ -29,6 +29,22 @@ def redact_payload(value: Any, redact_fields: list[str] | None = None) -> Any:
     return value
 
 
+def redact_keys(value: Any, redact_fields: list[str] | None = None) -> Any:
+    """Mask the value of every listed key, at any depth, and leave the rest exactly as it is.
+
+    Unlike redact_payload it does not shorten long strings, so it is safe for copies that are
+    stored in full.
+    """
+    fields = set(redact_fields or [])
+    if not fields:
+        return value
+    if isinstance(value, dict):
+        return {key: "[redacted]" if key in fields else redact_keys(inner, list(fields)) for key, inner in value.items()}
+    if isinstance(value, list):
+        return [redact_keys(item, list(fields)) for item in value]
+    return value
+
+
 def summarize_value(value: Any, redact_fields: list[str] | None = None, max_length: int = 220) -> str:
     redacted = redact_payload(value, redact_fields)
     if isinstance(redacted, str):

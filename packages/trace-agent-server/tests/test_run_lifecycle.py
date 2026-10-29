@@ -13,6 +13,7 @@ from trace_agent_server.services.events import record_event
 from trace_agent_server.services.run_lifecycle import (
     apply_llm_usage,
     complete_run,
+    expire_inactive_runs,
     fail_run_with,
     record_tool_result,
     token_count,
@@ -115,3 +116,44 @@ class TestRunEnd:
         assert (run.status, run.error_count, run.final_output_summary) == ("failed", 1, "boom")
         last = events_of(session, run)[-1]
         assert (last.type, last.error_code) == ("run.failed", "ValueError")
+
+
+class TestExpireInactiveRuns:
+    def stale_run(self, session, *, minutes_ago: int, status: str = "running") -> Run:
+        run = Run(agent_name="agent", goal="goal", status=status)
+        session.add(run)
+        session.flush()
+        run.updated_at = START - timedelta(minutes=minutes_ago)
+        session.flush()
+        return run
+
+    def test_a_run_with_no_activity_is_failed_with_a_clear_reason(self, session) -> None:
+        run = self.stale_run(session, minutes_ago=90)
+
+        closed = expire_inactive_runs(session, timeout=timedelta(minutes=60), now=START)
+
+        assert closed == 1
+        assert run.status == "failed"
+        assert "No activity for 60 minutes" in run.final_output_summary
+        last = events_of(session, run)[-1]
+        assert (last.type, last.error_code) == ("run.failed", "RunAbandoned")
+
+    def test_a_recent_run_is_left_running(self, session) -> None:
+        run = self.stale_run(session, minutes_ago=5)
+
+        assert expire_inactive_runs(session, timeout=timedelta(minutes=60), now=START) == 0
+        assert run.status == "running"
+
+    def test_finished_runs_are_not_touched(self, session) -> None:
+        run = self.stale_run(session, minutes_ago=500, status="completed")
+
+        assert expire_inactive_runs(session, timeout=timedelta(minutes=60), now=START) == 0
+        assert run.status == "completed"
+
+    def test_an_active_run_keeps_going_as_events_arrive(self, session) -> None:
+        run = self.stale_run(session, minutes_ago=90)
+        record_event(session, run, actor="sdk", event_type="tool.started", summary="still working", timestamp=START)
+        run.updated_at = START
+
+        assert expire_inactive_runs(session, timeout=timedelta(minutes=60), now=START) == 0
+        assert run.status == "running"

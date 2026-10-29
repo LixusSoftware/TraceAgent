@@ -45,6 +45,8 @@ class Settings(BaseSettings):
     capture_full_payloads: bool = True
     otlp_enabled: bool = True
     otlp_max_body_bytes: int = 10_000_000
+    # A run with no event for this long is closed as failed (0 turns it off).
+    run_inactivity_timeout_seconds: int = 3600
 
     model_config = SettingsConfigDict(
         env_prefix="TRACE_AGENT_",

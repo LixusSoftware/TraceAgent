@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from trace_agent_sdk.redaction import stable_hash, summarize_value
@@ -213,3 +214,23 @@ def fail_run_with(
         timestamp=ended_at,
     )
     derive_explanation(session, run)
+
+
+def expire_inactive_runs(session: Session, *, timeout: timedelta, now: datetime | None = None) -> int:
+    """Fail the runs that are still running but have had no event for ``timeout``.
+
+    An agent that dies without calling finish or fail would otherwise stay "running" forever and keep
+    counting as active. Returns how many runs were closed.
+    """
+    now = now or utcnow()
+    stale = list(session.scalars(select(Run).where(Run.status == "running", Run.updated_at < now - timeout)))
+    minutes = max(1, int(timeout.total_seconds() // 60))
+    for run in stale:
+        fail_run_with(
+            session,
+            run,
+            "RunAbandoned",
+            f"No activity for {minutes} minutes: the agent stopped without finishing the run.",
+        )
+    session.commit()
+    return len(stale)

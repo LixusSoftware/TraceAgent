@@ -126,6 +126,20 @@ describe("Inspector", () => {
       expect(screen.getByText("Why it failed")).toBeInTheDocument()
     })
 
+    it("does not count twice a command that hangs from a tool", () => {
+      const events = [
+        event({ id: 1, type: "tool.succeeded", step_id: "t1" }), event({ id: 2, type: "tool.succeeded", step_id: "t2" }),
+        event({ id: 3, type: "command.succeeded", step_id: "c1", parent_step_id: "t1", tool_name: null }),
+        event({ id: 4, type: "command.succeeded", step_id: "c2", parent_step_id: "t2", tool_name: null }),
+      ]
+      const two = { ...overview(), tool_count: 2, execution: { duration_ms: 1, model_turn_count: 1, command_count: 2, token_usage: { total_tokens: 0 } } } as unknown as RunOverview
+
+      render(<Inspector overview={two} selectedEvent={null} events={events} />)
+
+      expect(screen.getByText("Steps").closest("div[title]")).toHaveAttribute("title", "2 tool calls, 2 commands (2 of them inside tools, not counted twice)")
+      expect(screen.getByText("Steps").closest("div[title]")!.textContent).toBe("Steps2")
+    })
+
     it("counts tools and commands as steps, with the breakdown one hover away", () => {
       render(<Inspector overview={overview()} selectedEvent={null} events={[]} />)
 
@@ -144,6 +158,24 @@ describe("Inspector", () => {
 
       expect(screen.getByText("Result")).toBeInTheDocument()
       expect(screen.getAllByText(/descartado/).length).toBeGreaterThan(0)
+    })
+
+    it("shows a traceback with its real line breaks, not as \\n inside a JSON string", () => {
+      const traceback = 'File "<string>", line 26\n  print(kpis[\n        ^\nSyntaxError: unterminated'
+      const done = event({ payload_full: { output: { error: traceback } } })
+
+      render(<Inspector overview={null} selectedEvent={done} />)
+
+      const shown = screen.getAllByText(/SyntaxError: unterminated/).find((node) => node.tagName === "P" && node.className.includes("whitespace-pre-wrap"))!
+      expect(shown.textContent).toBe(traceback)
+      expect(shown.textContent).toContain("\n")
+      expect(screen.getByRole("button", { name: "Copy as JSON" })).toBeInTheDocument()
+    })
+
+    it("keeps the JSON look for an object with no multi-line text", () => {
+      render(<Inspector overview={null} selectedEvent={event({ payload_full: { output: { veredicto: "descartado", n: 2 } } })} />)
+
+      expect(screen.queryByRole("button", { name: "Copy as JSON" })).not.toBeInTheDocument()
     })
 
     it("formats the summary when it is JSON, and shows it as text when it is not", () => {

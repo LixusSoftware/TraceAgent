@@ -11,6 +11,7 @@ import {
   resultFull,
   resultSummary,
   statusLabel,
+  stepCounts,
   stepNodeLabel,
   tokensLabel,
   truncate,
@@ -155,6 +156,33 @@ describe("argsSummary", () => {
     expect(argsSummary(toolGroup(started), 40)?.length).toBe(40);
   });
 });
+
+describe("stepCounts", () => {
+  const tool = (id: string) => event("tool.succeeded", { step_id: id })
+  const command = (id: string, parent: string | null) => event("command.succeeded", { step_id: id, parent_step_id: parent })
+
+  it("does not count again a command that a tool records from inside itself", () => {
+    const events = [tool("t1"), tool("t2"), command("c1", "t1"), command("c2", "t2")]
+
+    expect(stepCounts(events, 2, 2)).toEqual({ steps: 2, nested: 2 })
+  })
+
+  it("counts a command of its own as a step", () => {
+    const events = [tool("t1"), command("c1", "t1"), command("c2", null), command("c3", "run")]
+
+    expect(stepCounts(events, 1, 3)).toEqual({ steps: 3, nested: 1 })
+  })
+
+  it("counts a command once, however many events it has", () => {
+    const events = [tool("t1"), event("command.started", { step_id: "c1", parent_step_id: "t1" }), command("c1", "t1")]
+
+    expect(stepCounts(events, 1, 1)).toEqual({ steps: 1, nested: 1 })
+  })
+
+  it("falls back to the plain total while the events are not there yet", () => {
+    expect(stepCounts([], 3, 2)).toEqual({ steps: 5, nested: 0 })
+  })
+})
 
 describe("stepNodeLabel", () => {
   it("names a tool by the tool, a model call and an agent by what they are", () => {

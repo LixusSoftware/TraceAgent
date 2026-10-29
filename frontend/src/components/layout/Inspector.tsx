@@ -9,6 +9,7 @@ import {
   FINISH_EVENTS,
   outcomeLabel,
   statusLabel,
+  stepCounts,
   tokensLabel,
   truncate,
   type MessageView,
@@ -129,6 +130,14 @@ function GraphNodeInspector({
   )
 }
 
+/** An object of plain values, one of which is a text of several lines (a traceback, a script). */
+function hasMultilineText(value: unknown): value is Record<string, string | number | boolean | null> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false
+  const values = Object.values(value as Record<string, unknown>)
+  const plain = values.every((item) => item === null || ["string", "number", "boolean"].includes(typeof item))
+  return plain && values.some((item) => typeof item === "string" && item.includes("\n"))
+}
+
 /** A value to read: a text as text, anything else as formatted JSON, both copiable. */
 function ValueBlock({ value, maxHeight = "240px" }: { value: unknown; maxHeight?: string }) {
   if (typeof value === "string") {
@@ -136,6 +145,21 @@ function ValueBlock({ value, maxHeight = "240px" }: { value: unknown; maxHeight?
       <div className="relative rounded border border-line bg-bg p-2">
         <div className="absolute top-1 right-1"><CopyButton text={value} label="Copy" /></div>
         <p className="text-xs whitespace-pre-wrap break-words overflow-auto pr-6" style={{ maxHeight }}>{value}</p>
+      </div>
+    )
+  }
+  // JSON would show the line breaks of a traceback as \n: with a text of several lines, each key is shown with its
+  // text as it is, line breaks included.
+  if (hasMultilineText(value)) {
+    return (
+      <div className="relative rounded border border-line bg-bg p-2 space-y-2">
+        <div className="absolute top-1 right-1"><CopyButton text={JSON.stringify(value, null, 2)} label="Copy as JSON" /></div>
+        {Object.entries(value).map(([key, item]) => (
+          <div key={key}>
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted pr-6">{key}</p>
+            <p className="text-xs font-mono whitespace-pre-wrap break-words">{String(item)}</p>
+          </div>
+        ))}
       </div>
     )
   }
@@ -159,7 +183,7 @@ function FinalOutput({ overview, events }: { overview: RunOverview; events: Even
 
 function RunInspector({ overview, events }: { overview: RunOverview; events: EventItem[] }) {
   const tokens = overview.execution.token_usage?.total_tokens ?? 0
-  const steps = overview.tool_count + overview.execution.command_count
+  const { steps, nested } = stepCounts(events, overview.tool_count, overview.execution.command_count)
   return (
     <div className="space-y-4">
       <div>
@@ -174,7 +198,7 @@ function RunInspector({ overview, events }: { overview: RunOverview; events: Eve
           icon={Hash}
           label="Steps"
           value={steps}
-          title={`${overview.tool_count} tool calls, ${overview.execution.command_count} commands`}
+          title={`${overview.tool_count} tool calls, ${overview.execution.command_count} commands${nested > 0 ? ` (${nested} of them inside tools, not counted twice)` : ""}`}
         />
         <Stat icon={Zap} label="Errors" value={overview.error_count} />
         <Stat icon={Clock} label="Duration" value={formatDuration(overview.execution.duration_ms)} />

@@ -166,6 +166,21 @@ export function argsSummary(group: TimelineGroup, max = 90): string | null {
   return truncate(text, max)
 }
 
+/**
+ * How many steps a run took. A command that a tool records by hand from inside itself hangs from the tool and is
+ * part of that step, so it is not counted again: the numbers are the actions the agent took.
+ */
+export function stepCounts(events: EventItem[], toolCount: number, commandCount: number): { steps: number; nested: number } {
+  const toolSteps = new Set(events.filter((event) => event.type.startsWith("tool.") && event.step_id).map((event) => event.step_id))
+  const nestedCommands = new Set(
+    events
+      .filter((event) => event.type.startsWith("command.") && event.step_id && event.parent_step_id && toolSteps.has(event.parent_step_id))
+      .map((event) => event.step_id),
+  )
+  const nested = Math.min(nestedCommands.size, commandCount)
+  return { steps: toolCount + commandCount - nested, nested }
+}
+
 /** The events that finish a step that a "started" event opens. */
 export const FINISH_EVENTS: Record<string, string[]> = {
   "tool.started": ["tool.succeeded", "tool.failed"],

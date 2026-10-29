@@ -215,6 +215,43 @@ class TestModelRequests:
         await build(capture_content=False).run("go")
         assert tool_results(posts)[-1]["output"] is None
 
+    async def test_two_calls_that_differ_only_after_the_cut_have_different_hashes(self, run_session, posts) -> None:
+        def build() -> Agent:
+            def model(messages: Any, info: AgentInfo) -> ModelResponse:
+                done = sum(1 for m in messages for p in m.parts if p.part_kind == "tool-return")
+                if done < 2:
+                    return ModelResponse(parts=[ToolCallPart("run_code", {"code": "# same long header " * 12 + f"kpis('L{done}')"})])
+                return ModelResponse(parts=[TextPart("done")])
+
+            agent = Agent(FunctionModel(model), name="a", capabilities=[TraceAgentCapability(run_session)])
+
+            @agent.tool_plain
+            def run_code(code: str) -> str:
+                return "ok"
+
+            return agent
+
+        await build().run("go")
+
+        first, second = tool_results(posts)[-2:]
+        assert first["args"] == second["args"]  # what is sent has the long text cut, so it looks the same...
+        assert first["args_hash"] != second["args_hash"]  # ...but the calls are told apart by the hash of the whole
+
+    async def test_the_same_call_has_the_same_hash_whatever_the_order_of_its_keys(self, run_session, posts) -> None:
+        agent = Agent(
+            FunctionModel(lambda m, i: ModelResponse(parts=[ToolCallPart("t", {"a": 1, "b": 2})]) if len(m) == 1 else ModelResponse(parts=[TextPart("ok")])),
+            name="a", capabilities=[TraceAgentCapability(run_session)],
+        )
+
+        @agent.tool_plain
+        def t(a: int, b: int) -> str:
+            return "ok"
+
+        await agent.run("go")
+        from trace_agent_sdk.redaction import stable_hash
+
+        assert tool_results(posts)[-1]["args_hash"] == stable_hash({"b": 2, "a": 1})
+
     async def test_very_long_texts_in_the_content_are_cut(self, run_session, posts) -> None:
         agent = Agent(FunctionModel(lambda m, i: ModelResponse(parts=[TextPart("ok")])), name="a", capabilities=[TraceAgentCapability(run_session)])
         await agent.run("x" * 50_000)

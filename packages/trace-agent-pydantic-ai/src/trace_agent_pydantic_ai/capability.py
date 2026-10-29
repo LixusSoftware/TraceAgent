@@ -433,6 +433,8 @@ class TraceAgentCapability(AbstractCapability[Any]):
             "step_id": step_id,
             "parent_step_id": _CURRENT_STEP.get(),
             "args": redact_payload(dict(args), self.redact_fields),
+            # The arguments sent have long texts cut; calls are told apart by the hash of the whole.
+            "args_hash": stable_hash(redact_keys(_plain(dict(args)), self.redact_fields)),
         }
         # While the tool runs it is the current step: what it records by hand (see current_step_id) and the
         # agents it calls hang from it, as they do over OpenTelemetry.

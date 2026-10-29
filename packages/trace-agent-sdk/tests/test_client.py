@@ -233,6 +233,20 @@ class TestToolsAndTurns:
 
         assert payload["output"] == {"user": "ann", "token": "[redacted]", "roles": ["admin", "ops"]}
 
+    def test_calls_that_differ_after_the_cut_of_a_long_argument_have_different_hashes(self, run) -> None:
+        @run.tool()
+        def run_code(code: str) -> str:
+            return "ok"
+
+        head = "# same long header " * 12
+        first, _ = run._execute_tool({"id": "c1", "name": "run_code", "arguments": {"code": head + "kpis('L1')"}, "step_id": "s1"})
+        second, _ = run._execute_tool({"id": "c2", "name": "run_code", "arguments": {"code": head + "kpis('L2')"}, "step_id": "s2"})
+        again, _ = run._execute_tool({"id": "c3", "name": "run_code", "arguments": {"code": head + "kpis('L1')"}, "step_id": "s3"})
+
+        assert first["args"] == second["args"]
+        assert first["args_hash"] != second["args_hash"]
+        assert first["args_hash"] == again["args_hash"]
+
     def test_an_output_that_cannot_be_turned_into_json_is_left_out_not_fatal(self, run) -> None:
         @run.tool()
         def loop() -> dict:

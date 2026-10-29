@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from collections import defaultdict
 from typing import Any
 
@@ -7,6 +8,17 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from trace_agent_server.models import Decision, Event, Run
+
+
+def command_title(command: str, limit: int = 80) -> str:
+    """A short name for a command, not its whole text: the first comment of a script says what it does; without
+    one, its first line that is not an import."""
+    code = re.sub(r"^\s*(?:python3?|py)\s+-c\s+", "", command)
+    lines = [line.strip() for line in code.splitlines() if line.strip()]
+    comment = next((line.lstrip("#").strip() for line in lines if line.startswith("#")), None)
+    first_code = next((line for line in lines if not line.startswith("#") and not re.match(r"(?:import|from)\s", line)), None)
+    text = " ".join((comment or first_code or (lines[0] if lines else command)).split())
+    return text if len(text) <= limit else f"{text[: limit - 1]}…"
 
 
 def derive_explanation(session: Session, run: Run) -> dict[str, Any]:
@@ -17,6 +29,7 @@ def derive_explanation(session: Session, run: Run) -> dict[str, Any]:
     flags: list[dict[str, Any]] = []
     seen_flags: set[tuple[str, str]] = set()
     loop_tracker: dict[tuple[str, str], list[Event]] = defaultdict(list)
+    loop_flags: dict[tuple[str, str], dict[str, Any]] = {}
     failure_streaks: dict[str, int] = defaultdict(int)
     last_failure_by_tool: dict[str, Event] = {}
     last_failure_by_command: dict[str, Event] = {}
@@ -78,13 +91,17 @@ def derive_explanation(session: Session, run: Run) -> dict[str, Any]:
             # "Started X." is identical for every call, so tell calls apart by their arguments.
             key = (tool_name, (event.payload_hash or event.summary) if derived_request else event.summary)
             loop_tracker[key].append(event)
-            if len(loop_tracker[key]) >= 3:
-                add_flag(
-                    "loop",
-                    f"{tool_name} repeated {len(loop_tracker[key])} times without a new observable branch.",
-                    [item.id for item in loop_tracker[key][-3:]],
-                    {"tool_name": tool_name},
-                )
+            repeats = len(loop_tracker[key])
+            if repeats >= 3:
+                # One flag per repeated call, kept up to date, not a new flag for every repetition.
+                flag = loop_flags.get(key)
+                if flag is None:
+                    flag = {"type": "loop", "label": "", "event_ids": [], "metadata": {"tool_name": tool_name}}
+                    loop_flags[key] = flag
+                    flags.append(flag)
+                flag["label"] = f"{tool_name} was called {repeats} times with the same arguments."
+                flag["event_ids"] = [item.id for item in loop_tracker[key]]
+                flag["metadata"] = {"tool_name": tool_name, "count": repeats}
             if tool_name in last_failure_by_tool:
                 failed_event = last_failure_by_tool[tool_name]
                 retry_count += 1
@@ -141,9 +158,10 @@ def derive_explanation(session: Session, run: Run) -> dict[str, Any]:
             command_name = str(event.event_metadata.get("command") or "unknown command")
             last_failure_by_command[command_name] = event
             failure_streaks[event.step_id or command_name] += 1
+            exit_code = event.event_metadata.get("exit_code")
             add_flag(
                 "command_failure",
-                f"{command_name} failed and may have blocked the run.",
+                f"Command failed{f' (exit code {exit_code})' if exit_code is not None else ''}: {command_title(command_name)}",
                 [event.id],
                 {"command": command_name, "step_id": event.step_id},
             )

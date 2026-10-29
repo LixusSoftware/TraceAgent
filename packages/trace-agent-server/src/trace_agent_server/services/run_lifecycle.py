@@ -67,7 +67,9 @@ def record_tool_result(
         step_id=result.step_id,
         parent_step_id=result.parent_step_id,
         tool_name=result.name,
-        payload_hash=stable_hash(result.args),
+        # The sender hashes the whole arguments: the ones it sends have long texts cut, so two calls that differ
+        # only after the cut would look the same (and be flagged as a loop).
+        payload_hash=result.args_hash or stable_hash(result.args),
         payload_full={"args": result.args} if capture_full else None,
         metadata={"call_id": result.call_id, "args_summary": summarize_value(result.args)},
         timestamp=started_at,

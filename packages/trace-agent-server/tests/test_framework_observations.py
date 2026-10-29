@@ -269,6 +269,38 @@ class TestDecisionsFromFrameworkTools:
         flags = explanation(client, run_id)["flags"]
         assert any(flag["type"] == "loop" for flag in flags)
 
+    def test_a_repeated_call_is_one_flag_with_its_count_in_plain_words(self, client) -> None:
+        run_id = start_run(client)
+        for step in ("t1", "t2", "t3", "t4", "t5", "t6"):
+            post_tool(client, run_id, step, "search", args={"q": "same"})
+
+        loops = [flag for flag in explanation(client, run_id)["flags"] if flag["type"] == "loop"]
+
+        assert len(loops) == 1
+        assert loops[0]["label"] == "search was called 6 times with the same arguments."
+        assert loops[0]["metadata"]["count"] == 6
+        assert len(loops[0]["event_ids"]) == 6
+
+    def test_different_programs_that_share_a_long_start_are_not_a_loop(self, client) -> None:
+        # The arguments are cut at 160 characters before they are sent: what tells the calls apart is their hash.
+        run_id = start_run(client)
+        common = "# OEE de las lineas del 14 al 18 de septiembre " * 6
+        for step, ending in (("t1", "kpis('L1')"), ("t2", "kpis('L2')"), ("t3", "kpis('L3')")):
+            result = {"call_id": step, "name": "ejecutar_python", "step_id": step, "status": "succeeded",
+                      "args": {"codigo": common[:157] + "..."}, "args_hash": f"hash-of-the-whole-{ending}"}
+            assert client.post(f"/api/runs/{run_id}/tool-results", json={"results": [result]}).status_code == 200
+
+        assert not any(flag["type"] == "loop" for flag in explanation(client, run_id)["flags"])
+
+    def test_the_same_whole_arguments_are_a_loop_even_when_what_was_sent_was_cut(self, client) -> None:
+        run_id = start_run(client)
+        for step in ("t1", "t2", "t3"):
+            result = {"call_id": step, "name": "ejecutar_python", "step_id": step, "status": "succeeded",
+                      "args": {"codigo": "x" * 157 + "..."}, "args_hash": "the-same-program"}
+            client.post(f"/api/runs/{run_id}/tool-results", json={"results": [result]})
+
+        assert any(flag["type"] == "loop" for flag in explanation(client, run_id)["flags"])
+
     def test_the_same_tool_with_different_arguments_is_not_a_loop(self, client) -> None:
         run_id = start_run(client)
         for step, query in (("t1", "a"), ("t2", "b"), ("t3", "c")):

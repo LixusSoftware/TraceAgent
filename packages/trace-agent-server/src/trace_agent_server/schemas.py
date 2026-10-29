@@ -60,6 +60,8 @@ class ToolResultInput(BaseModel):
     parent_step_id: str | None = None
     status: Literal["succeeded", "failed"]
     args: dict[str, Any] = Field(default_factory=dict)
+    # Hash of the arguments as the tool received them (the ones in args may have long texts cut).
+    args_hash: str | None = None
     output_summary: str | None = None
     # What the tool returned, whole (masked by the sender). Stored only with full payloads on.
     output: Any | None = None

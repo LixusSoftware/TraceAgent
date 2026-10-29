@@ -103,3 +103,18 @@ body {
 .recharts-brush {
   fill: var(--surface-strong) !important;
 }
+
+/* The zoom buttons of the graph: the library paints them white with pale icons, which cannot be seen on either theme. */
+.react-flow .react-flow__controls-button {
+  background: var(--surface-strong);
+  color: var(--text);
+  border-bottom: 1px solid var(--line);
+}
+
+.react-flow .react-flow__controls-button:hover {
+  background: var(--surface);
+}
+
+.react-flow .react-flow__controls-button svg {
+  fill: currentColor;
+}

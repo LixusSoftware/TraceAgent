@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react"
 import { Search, RefreshCw, Circle, FilterX } from "lucide-react"
 import type { RunListItem } from "../../types"
+import { truncate } from "../../lib/humanize"
 
 interface SidebarProps {
   runs: RunListItem[]
@@ -72,7 +73,10 @@ export function Sidebar({ runs, selectedRunId, onSelectRun }: SidebarProps) {
         {filtered.map((run) => (
           <button
             key={run.id}
+            type="button"
             onClick={() => onSelectRun(run.id)}
+            aria-label={`${run.agent_name}, ${run.status}${run.goal ? `: ${truncate(run.goal, 80)}` : ""}`}
+            aria-current={run.id === selectedRunId ? "true" : undefined}
             className={`w-full text-left px-3 py-2 flex items-start gap-2.5 transition-colors border-l-2 ${
               run.id === selectedRunId
                 ? "bg-surface-strong border-accent"

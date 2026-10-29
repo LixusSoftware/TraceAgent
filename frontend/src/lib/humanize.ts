@@ -166,13 +166,50 @@ export function argsSummary(group: TimelineGroup, max = 90): string | null {
   return truncate(text, max)
 }
 
-/** What a tool call returned (or why it failed), in one line, so a long run can be read without opening every call. */
-export function resultSummary(group: TimelineGroup, max = 90): string | null {
-  const done = [...group.events].reverse().find((event) => event.type === "tool.succeeded" || event.type === "tool.failed")
+/** The events that finish a step that a "started" event opens. */
+export const FINISH_EVENTS: Record<string, string[]> = {
+  "tool.started": ["tool.succeeded", "tool.failed"],
+  "command.started": ["command.succeeded", "command.failed"],
+  "chain.started": ["chain.completed", "chain.failed"],
+  "llm.started": ["llm.completed", "llm.failed"],
+}
+
+function finishedTool(group: TimelineGroup) {
+  return [...group.events].reverse().find((event) => event.type === "tool.succeeded" || event.type === "tool.failed")
+}
+
+/** What a tool returned, whole, when the server kept it. */
+function wholeOutput(group: TimelineGroup): unknown {
+  const done = finishedTool(group)
+  return done?.type === "tool.succeeded" ? (done.payload_full as { output?: unknown } | null | undefined)?.output : undefined
+}
+
+/**
+ * What a tool call returned (or why it failed), in a line, so a long run can be read without opening every call.
+ * An object is written as `key=value` pairs in the order the tool gave them, each value shortened, so the decisive
+ * key is not cut off at the end by one long value before it.
+ */
+export function resultSummary(group: TimelineGroup, max = 160): string | null {
+  const done = finishedTool(group)
+  const output = wholeOutput(group)
+  if (output !== undefined && output !== null) {
+    if (typeof output === "object" && !Array.isArray(output)) {
+      const pairs = Object.entries(output as Record<string, unknown>).map(([key, value]) => `${key}=${truncate(formatValue(value), 32)}`)
+      return truncate(pairs.join(", "), max)
+    }
+    return truncate(formatValue(output), max)
+  }
   const summary = done?.summary?.trim()
   // Without an output the server writes "<tool> completed.": that says nothing the row does not already say.
   if (!done || !summary || summary === `${group.tool_name} completed.`) return null
   return done.type === "tool.failed" ? `failed: ${truncate(summary, max)}` : truncate(summary, max)
+}
+
+/** The whole result of a tool call, for the hover of its row. */
+export function resultFull(group: TimelineGroup): string | null {
+  const output = wholeOutput(group)
+  if (output !== undefined && output !== null) return typeof output === "string" ? output : JSON.stringify(output, null, 2)
+  return finishedTool(group)?.summary ?? null
 }
 
 export type MessageView = { role: string; label: string; text: string }

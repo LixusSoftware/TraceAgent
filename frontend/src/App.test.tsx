@@ -175,6 +175,24 @@ describe("App", () => {
     expect(await screen.findByText("goal of second-agent", { selector: "p.text-xs" })).toBeInTheDocument();
   });
 
+  it("goes back to the run in the inspector when the view changes, instead of keeping the event of the other view", async () => {
+    mocked.getGraph.mockResolvedValue({ run_id: "run-1", view: "execution", nodes: [], edges: [] });
+    renderApp();
+    fireEvent.click(await screen.findByText("weather in Madrid"));
+    await waitFor(() => expect(screen.getAllByText("weather in Madrid").length).toBeGreaterThan(1));
+
+    fireEvent.click(screen.getByRole("button", { name: "Graph" }));
+
+    expect(await screen.findByText("goal of first-agent", { selector: "p.text-xs" })).toBeInTheDocument();
+  });
+
+  it("names every run in the list for screen readers, with its state", async () => {
+    renderApp();
+
+    expect(await screen.findByRole("button", { name: "first-agent, completed: goal of first-agent" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "second-agent, completed: goal of second-agent" })).toBeInTheDocument();
+  });
+
   it("refreshes the list of runs every few seconds so a new run shows up while it runs", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {

@@ -181,6 +181,12 @@ export default function App() {
     if (event) setShowInspector(true)
   }, [selectedRunId])
 
+  const handleChangeRunView = useCallback((mode: RunView) => {
+    setRunViewMode(mode)
+    // What was selected in one view means nothing in another: the inspector goes back to the run.
+    setSelection({ runId: selectedRunId, event: null, node: null })
+  }, [selectedRunId])
+
   const handleSelectGraphNode = useCallback((node: GraphNode | null) => {
     setSelection((prev) => ({
       runId: selectedRunId,
@@ -223,7 +229,7 @@ export default function App() {
             </div>
           ) : (
             <>
-              <RunViewToolbar mode={runViewMode} onChange={setRunViewMode} />
+              <RunViewToolbar mode={runViewMode} onChange={handleChangeRunView} />
               {runViewMode === "timeline" ? (
                 <Timeline
                   timeline={timeline}

@@ -158,6 +158,53 @@ describe("Inspector", () => {
     })
   })
 
+  describe("the status of a step", () => {
+    it("a 'started' event of a step that ended does not say it is still running", () => {
+      const started = event({ id: 1, type: "llm.started", status: "running", step_id: "l1", tool_name: null });
+      const finished = event({ id: 2, type: "llm.completed", status: "succeeded", step_id: "l1", tool_name: null });
+
+      render(<Inspector overview={null} selectedEvent={started} events={[started, finished]} />);
+
+      expect(screen.getByText("Succeeded")).toBeInTheDocument();
+      expect(screen.queryByText("Running")).not.toBeInTheDocument();
+    });
+
+    it("a step that has not ended is running", () => {
+      const started = event({ id: 1, type: "llm.started", status: "running", step_id: "l1", tool_name: null });
+
+      render(<Inspector overview={null} selectedEvent={started} events={[started]} />);
+
+      expect(screen.getByText("Running")).toBeInTheDocument();
+    });
+  });
+
+  it("shows what an agent answered when its run ended, formatted", () => {
+    const ended = event({ type: "chain.completed", tool_name: null, metadata: { output_summary: '{"hay_defecto": true, "evidencia": "x"}' } });
+
+    render(<Inspector overview={null} selectedEvent={ended} />);
+
+    expect(screen.getByText("Agent output")).toBeInTheDocument();
+    expect(screen.getAllByText(/hay_defecto/).length).toBeGreaterThan(0);
+  });
+
+  describe("a long message of a model call", () => {
+    const long = "Eres un analista de planta. ".repeat(60);
+    const call = event({
+      type: "llm.completed", summary: "Model responded via openai", tool_name: null,
+      payload_full: { input_messages: [{ role: "system", parts: [{ type: "text", content: long }] }], output_messages: [] } as EventItem["payload_full"],
+    });
+
+    it("is shortened, with a button to read it whole (no inner scroll box to trap the wheel)", () => {
+      render(<Inspector overview={null} selectedEvent={call} />);
+
+      expect(screen.getByText(/^Eres un analista de planta\./).textContent!.length).toBeLessThan(long.length);
+      fireEvent.click(screen.getByRole("button", { name: /Show all \(1,680 characters\)/ }));
+      expect(screen.getByText(/^Eres un analista de planta\./).textContent).toBe(long);
+      fireEvent.click(screen.getByRole("button", { name: "Show less" }));
+      expect(screen.getByText(/^Eres un analista de planta\./).textContent!.length).toBeLessThan(long.length);
+    });
+  });
+
   describe("technical details", () => {
     it("keeps the ids for debugging, each with a button to copy it", () => {
       render(<Inspector overview={null} selectedEvent={event()} />)

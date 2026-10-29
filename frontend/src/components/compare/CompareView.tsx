@@ -3,6 +3,7 @@ import { GitCompare, ArrowRight, AlertCircle, CheckCircle2, Minus, ChevronDown, 
 import type { RunListItem, RunCompareResponse, DiffPair } from "../../types";
 import { api } from "../../api";
 import { formatDuration } from "../../lib/utils";
+import { formatCount } from "../../lib/chart";
 import { JsonViewer } from "../JsonViewer";
 
 interface CompareViewProps {
@@ -71,9 +72,15 @@ export function CompareView({ runs }: CompareViewProps) {
 
           {/* Overview Diff */}
           <div className="bg-surface border border-line rounded-lg p-4">
-            <h3 className="text-sm font-medium mb-3">Overview Diff</h3>
+            <h3 className="text-sm font-medium mb-1">Overview Diff</h3>
+            {/* The direction and the colors, said once: the numbers alone do not tell which run has more. */}
+            <p className="text-[11px] text-muted mb-3">
+              Right run minus left run: <span className="text-text">+3</span> means the right run has 3 more.{" "}
+              <span className="text-accent">Gold</span> is better (fewer errors, retries, tokens or less time),{" "}
+              <span className="text-danger">red</span> is worse; the other numbers are only different.
+            </p>
             <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-              <DiffStat label="Tools" delta={result.overview_diff.tool_count_delta} />
+              <DiffStat label="Tool calls" delta={result.overview_diff.tool_count_delta} />
               <DiffStat label="Commands" delta={result.overview_diff.command_count_delta} />
               <DiffStat label="Errors" delta={result.overview_diff.error_count_delta} lowerIsBetter />
               <DiffStat label="Retries" delta={result.overview_diff.retry_count_delta} lowerIsBetter />
@@ -210,7 +217,7 @@ function RunCard({ run, title }: { run: { agent_name: string; goal: string; stat
           <span className="font-medium">{run.error_count}</span>
         </div>
         <div className="flex justify-between">
-          <span className="text-muted">Turns</span>
+          <span className="text-muted">Model calls</span>
           <span className="font-medium">{run.execution.model_turn_count}</span>
         </div>
         <div className="flex justify-between">
@@ -234,7 +241,7 @@ function DiffStat({
   label,
   delta,
   lowerIsBetter = false,
-  format = String,
+  format = formatCount,
 }: {
   label: string;
   delta: number | null;

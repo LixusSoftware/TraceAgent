@@ -73,7 +73,7 @@ describe("Timeline", () => {
     expect(screen.getByText("Model call")).toBeInTheDocument();
     expect(screen.getByText("get_weather")).toBeInTheDocument();
     // The next level stays closed until asked for.
-    expect(screen.queryByText("LLM call started")).not.toBeInTheDocument();
+    expect(screen.queryByText("LLM call completed")).not.toBeInTheDocument();
   });
 
   it("collapses a step by clicking it and opens it again", () => {
@@ -90,12 +90,12 @@ describe("Timeline", () => {
     renderTimeline([run, llm, tool]);
 
     fireEvent.click(screen.getByRole("button", { name: "Expand all steps" }));
-    expect(screen.getByText("LLM call started")).toBeInTheDocument();
+    expect(screen.getByText("LLM call completed")).toBeInTheDocument();
     expect(screen.getByText("get_weather done")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Collapse all steps" }));
     expect(screen.queryByText("Model call")).not.toBeInTheDocument();
-    expect(screen.queryByText("LLM call started")).not.toBeInTheDocument();
+    expect(screen.queryByText("LLM call completed")).not.toBeInTheDocument();
   });
 
   it("names the steps for screen readers, with their state", () => {
@@ -141,17 +141,54 @@ describe("Timeline", () => {
     expect(row).not.toHaveTextContent(/\brun\b/);
   });
 
-  it("does not put a result badge on a started event", () => {
+  it("shows only the answer row of a model call, not its 'request' row, which only repeats the header", () => {
     const started = { ...makeEvent(3, "llm.started", "Model request to m", "llm-1", "run-1"), status: "running" };
     const model = makeGroup("llm-1", "llm.completed", "run-1", [started, makeEvent(4, "llm.completed", "Model responded via p", "llm-1", "run-1")]);
 
     renderTimeline([run, model]);
     fireEvent.click(screen.getByRole("button", { name: "Expand all steps" }));
 
-    const startedRow = screen.getByText("Model request to m").closest("button") as HTMLElement;
-    const doneRow = screen.getByText("Model responded via p").closest("button") as HTMLElement;
-    expect(startedRow).not.toHaveTextContent(/\brun\b/);
-    expect(doneRow).toHaveTextContent("ok");
+    expect(screen.queryByText("Model request to m")).not.toBeInTheDocument();
+    expect((screen.getByText("Model responded via p").closest("button") as HTMLElement)).toHaveTextContent("ok");
+  });
+
+  it("shows the result of a tool in the order the tool gave it, with the whole result on hover", () => {
+    const done = {
+      ...makeEvent(6, "tool.succeeded", '{"ventana": [18.0, 25.0], "veredicto": "causa"}', "tool-1", "run-1"),
+      payload_full: { output: { parametro: "tiempo_enfriamiento_s", fuera_de_ventana_pct: 100, veredicto: "causa" } },
+    };
+    const group = makeGroup("tool-1", "comprobar", "run-1", [makeEvent(5, "tool.started", "Started comprobar.", "tool-1", "run-1"), done]);
+    group.tool_name = "comprobar";
+
+    renderTimeline([run, group]);
+
+    const row = screen.getByText(/^→ parametro=/);
+    expect(row.textContent).toBe("→ parametro=tiempo_enfriamiento_s, fuera_de_ventana_pct=100, veredicto=causa");
+    expect(row).toHaveAttribute("title", expect.stringContaining('"veredicto": "causa"'));
+  });
+
+  it("shortens each value of a result instead of cutting the line, so the decisive key is not lost", () => {
+    const done = {
+      ...makeEvent(6, "tool.succeeded", "x", "tool-1", "run-1"),
+      payload_full: { output: { ventana: Array.from({ length: 40 }, (_, i) => i + 0.5), veredicto: "causa" } },
+    };
+    const group = makeGroup("tool-1", "comprobar", "run-1", [done]);
+    group.tool_name = "comprobar";
+
+    renderTimeline([run, group]);
+
+    expect(screen.getByText(/veredicto=causa/)).toBeInTheDocument();
+  });
+
+  it("calls the end of an agent what it is, without its Python repr", () => {
+    const ended = { ...makeEvent(7, "chain.completed", "Pydantic AI run 'agent' completed", "run-1", null), metadata: { output_summary: "hay_defecto=True evidencia='x'" } };
+    const agent = makeGroup("run-1", "chain.completed", null, [makeEvent(2, "chain.started", "Pydantic AI run 'agent' started", "run-1", null), ended]);
+
+    renderTimeline([agent]);
+
+    expect(screen.getByText("Agent finished")).toBeInTheDocument();
+    expect(screen.queryByText(/hay_defecto/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Pydantic AI run/)).not.toBeInTheDocument();
   });
 
   it("shows what a tool returned in its row, so a long run is read without opening every call", () => {
@@ -209,7 +246,7 @@ describe("Timeline", () => {
 
     const text = document.body.textContent ?? "";
     // The start of the agent ("Run started") is not a row of its own: its header already says so.
-    const order = ["Model call", "get_weather", "Run completed"].map((s) => text.indexOf(s));
+    const order = ["Model call", "get_weather", "Agent finished"].map((s) => text.indexOf(s));
     expect(order.every((i) => i >= 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
   });

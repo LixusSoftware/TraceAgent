@@ -8,6 +8,7 @@ import {
   eventTitle,
   groupTitle,
   outcomeLabel,
+  resultFull,
   resultSummary,
   statusLabel,
   stepNodeLabel,
@@ -187,6 +188,33 @@ describe("resultSummary", () => {
     expect(resultSummary(toolGroup(event("tool.started"), event("tool.succeeded", { summary: "lookup completed." })))).toBeNull();
     expect(resultSummary(toolGroup(event("tool.started")))).toBeNull();
   });
+
+  it("writes the whole output as key=value pairs in the order the tool gave them", () => {
+    const output = { parametro: "temp_molde_C", fuera_de_ventana_pct: 100, veredicto: "causa" }
+
+    expect(resultSummary(toolGroup(event("tool.succeeded", { payload_full: { output } })))).toBe("parametro=temp_molde_C, fuera_de_ventana_pct=100, veredicto=causa")
+  })
+
+  it("shortens each value, so a long list does not push the decisive key out of the line", () => {
+    const output = { ventana: Array.from({ length: 50 }, (_, i) => i + 0.25), veredicto: "causa" }
+
+    const summary = resultSummary(toolGroup(event("tool.succeeded", { payload_full: { output } })))
+
+    expect(summary).toContain("veredicto=causa")
+    expect(summary!.length).toBeLessThan(80)
+  })
+
+  it("writes a plain output as it is, and the whole result in full for the hover", () => {
+    const group = toolGroup(event("tool.succeeded", { payload_full: { output: "Sunny in Madrid" } }))
+    expect(resultSummary(group)).toBe("Sunny in Madrid")
+
+    const whole = toolGroup(event("tool.succeeded", { payload_full: { output: { a: 1, b: [1, 2] } } }))
+    expect(resultFull(whole)).toBe(JSON.stringify({ a: 1, b: [1, 2] }, null, 2))
+  })
+
+  it("falls back to the summary for the hover when the whole output was not kept", () => {
+    expect(resultFull(toolGroup(event("tool.succeeded", { summary: "3 results" })))).toBe("3 results")
+  })
 
   it("cuts a long result", () => {
     expect(resultSummary(toolGroup(event("tool.succeeded", { summary: "x".repeat(300) })), 40)?.length).toBe(40);

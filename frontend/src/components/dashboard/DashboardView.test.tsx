@@ -36,7 +36,9 @@ describe("DashboardView", () => {
     render(<DashboardView data={data()} />);
 
     expect(screen.getByText("27,534")).toBeInTheDocument();
-    expect(screen.getByText(/27,534 in total, over 9 tool calls/)).toBeInTheDocument();
+    // The tokens card talks about tokens only: tool calls have their own card.
+    expect(screen.getByText(/27,534 in total/)).toBeInTheDocument();
+    expect(screen.queryByText(/tool calls/)).not.toBeInTheDocument();
   });
 
   it("shows only the cards that have data", () => {

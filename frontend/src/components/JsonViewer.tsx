@@ -63,7 +63,7 @@ export function JsonViewer({ value, className = "", maxHeight = "auto" }: JsonVi
           <Copy className="w-3 h-3 text-muted" />
         )}
       </button>
-      <pre className="text-[11px] font-mono leading-relaxed pr-6">
+      <pre className="text-[11px] font-mono leading-relaxed pr-6 whitespace-pre-wrap break-words">
         <HighlightedJson text={jsonString} />
       </pre>
     </div>

@@ -1,5 +1,16 @@
 import { describe, expect, it } from "vitest"
-import { formatCount, niceTicks } from "./chart"
+import { dayLabel, formatCount, niceTicks } from "./chart"
+
+describe("dayLabel", () => {
+  it("writes a day like the other dates of the interface", () => {
+    expect(dayLabel("2026-10-28")).toBe("28 Oct")
+    expect(dayLabel("2026-01-05")).toBe("5 Jan")
+  })
+
+  it("keeps what it cannot read", () => {
+    expect(dayLabel("not a day")).toBe("not a day")
+  })
+})
 
 describe("formatCount", () => {
   it("always groups thousands the same way, whatever the language of the browser", () => {

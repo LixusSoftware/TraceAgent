@@ -3,7 +3,7 @@ import { ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Clock, Alert
 import type { TimelineResponse, EventItem, TimelineGroup } from "../../types"
 import { EventIcon } from "./EventIcon"
 import { formatDuration, formatWhen } from "../../lib/utils"
-import { argsSummary, eventTitle, groupTitle, resultSummary } from "../../lib/humanize"
+import { argsSummary, eventTitle, FINISH_EVENTS, groupTitle, resultFull, resultSummary } from "../../lib/humanize"
 
 type TimelineRow = { seq: number; event: EventItem } | { seq: number; child: TimelineGroup }
 
@@ -12,22 +12,18 @@ function hasNested(group: TimelineGroup, childrenByParent: Map<string, TimelineG
   return group.events.length > 1 || group.event_count > group.events.length || childrenByParent.has(group.step_id)
 }
 
-const FINISHES: Record<string, string[]> = {
-  "tool.started": ["tool.succeeded", "tool.failed"],
-  "command.started": ["command.succeeded", "command.failed"],
-  "chain.started": ["chain.completed", "chain.failed"],
-}
-
 /** "Started <tool>." says nothing the step's own row does not say, once the step has a result row. */
 function isRedundantStart(group: TimelineGroup, event: EventItem): boolean {
-  const finishes = FINISHES[event.type]
+  const finishes = FINISH_EVENTS[event.type]
   return !!finishes && group.events.some((other) => finishes.includes(other.type))
 }
 
-/** The end of an agent says what it answered; "Pydantic AI run 'agent' completed" says nothing the row does not. */
+/**
+ * The end of an agent is a row that says so: "Pydantic AI run 'agent' completed" names an agent the header already
+ * names, and what it answered is not repeated here (it is in the inspector, and the run's final output is above).
+ */
 function rowText(event: EventItem): string {
-  const answer = event.metadata?.output_summary
-  return event.type === "chain.completed" && typeof answer === "string" && answer ? answer : event.summary
+  return event.type === "chain.completed" ? eventTitle(event.type) : event.summary
 }
 
 interface TimelineProps {
@@ -229,7 +225,10 @@ function TimelineGroupNode({
             {group.events[0]?.type !== "run.started" && <StatusBadge status={group.status} />}
           </div>
           {args && <p className="text-[10px] text-muted truncate font-mono">{args}</p>}
-          {result && <p className="text-[10px] text-muted truncate font-mono">→ {result}</p>}
+          {result && (
+            // Two lines, not one: the decisive value must not be pushed out of sight; the whole result is on hover.
+            <p className="text-[10px] text-muted font-mono break-words line-clamp-2" title={resultFull(group) ?? undefined}>→ {result}</p>
+          )}
           {pct > 0 && (
             <div className="flex items-center gap-2 mt-1">
               <div className="flex-1 h-1 bg-line rounded-full overflow-hidden">

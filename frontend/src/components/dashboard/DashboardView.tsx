@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import type { DashboardResponse } from "../../types";
 import { cn, formatDuration } from "../../lib/utils";
-import { formatCount, niceTicks } from "../../lib/chart";
+import { dayLabel, formatCount, niceTicks } from "../../lib/chart";
 import { truncate } from "../../lib/humanize";
 import {
   BarChart,
@@ -27,6 +27,7 @@ import {
   Area,
   CartesianGrid,
   LabelList,
+  Legend,
 } from "recharts";
 
 interface DashboardViewProps {
@@ -78,7 +79,7 @@ export function DashboardView({ data }: DashboardViewProps) {
   } = data;
 
   const trendData = trend.map((d) => ({
-    date: d.date.slice(5),
+    date: dayLabel(d.date),
     runs: d.runs,
     completed: d.completed,
     failed: d.failed,
@@ -216,23 +217,29 @@ export function DashboardView({ data }: DashboardViewProps) {
                     axisLine={{ stroke: C.grid }}
                   />
                   <Tooltip contentStyle={tooltipStyle} itemStyle={tooltipTextStyle} labelStyle={tooltipTextStyle} cursor={false} />
+                  {/* Straight segments with a point per day: a smooth curve between separate days draws a ramp that never happened. */}
+                  <Legend wrapperStyle={{ color: C.text, fontSize: 11 }} iconSize={8} />
                   <Area
-                    type="monotone"
+                    type="linear"
                     dataKey="runs"
+                    name="Runs"
                     stroke={C.accent}
                     fillOpacity={1}
                     fill="url(#colorRuns)"
                     strokeWidth={2}
-                    activeDot={{ r: 3, fill: C.accent, stroke: C.surface }}
+                    dot={{ r: 3, fill: C.accent, stroke: C.surface }}
+                    activeDot={{ r: 4, fill: C.accent, stroke: C.surface }}
                   />
                   <Area
-                    type="monotone"
+                    type="linear"
                     dataKey="failed"
+                    name="Failed"
                     stroke={C.danger}
                     fillOpacity={1}
                     fill="url(#colorFailed)"
                     strokeWidth={2}
-                    activeDot={{ r: 3, fill: C.danger, stroke: C.surface }}
+                    dot={{ r: 3, fill: C.danger, stroke: C.surface }}
+                    activeDot={{ r: 4, fill: C.danger, stroke: C.surface }}
                   />
                 </AreaChart>
               </ResponsiveContainer>
@@ -247,7 +254,7 @@ export function DashboardView({ data }: DashboardViewProps) {
             Tokens
           </h3>
           <p className="text-[10px] text-muted mb-3">
-            Tokens consumed by the model: {formatCount(stats.total_tokens)} in total, over {formatCount(stats.total_tools)} tool calls
+            Tokens consumed by the model: {formatCount(stats.total_tokens)} in total
           </p>
           {stats.total_tokens === 0 ? (
             <p className="text-xs text-muted">No token data.</p>

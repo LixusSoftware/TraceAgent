@@ -1,3 +1,4 @@
+import { useState } from "react"
 import { Calendar, Clock, Hash, Zap } from "lucide-react"
 import type { RunOverview, EventItem, GraphNode } from "../../types"
 import { formatDuration, formatWhen } from "../../lib/utils"
@@ -5,6 +6,7 @@ import {
   decisionKindLabel,
   describeMessages,
   eventTitle,
+  FINISH_EVENTS,
   outcomeLabel,
   statusLabel,
   tokensLabel,
@@ -261,6 +263,12 @@ function EventInspector({ event, events = [] }: { event: EventItem; events?: Eve
   const args = argsOf(event) ?? argsOf(started)
   const hasArgs = args !== null && typeof args === "object" && Object.keys(args as object).length > 0
   const isModelCall = event.type.startsWith("llm.")
+  // A "started" event is only the beginning: in a run that has ended it must not say "Running".
+  const finishTypes = FINISH_EVENTS[event.type]
+  const finish = finishTypes ? events.find((other) => other.step_id === event.step_id && finishTypes.includes(other.type)) : undefined
+  const status = (finish ?? event).status
+  // What an agent answered, as it came with the end of its run.
+  const agentOutput = event.type === "chain.completed" && typeof event.metadata?.output_summary === "string" ? parseMaybe(event.metadata.output_summary) : undefined
   const payload = (event.payload_full ?? {}) as Record<string, unknown>
   // What a finished tool returned: the whole output when it was kept, else its summary.
   const result = event.type === "tool.succeeded" ? (payload.output !== undefined ? payload.output : parseMaybe(payload.output_summary)) : undefined
@@ -277,7 +285,7 @@ function EventInspector({ event, events = [] }: { event: EventItem; events?: Eve
       </div>
 
       <div className="space-y-1 text-xs">
-        <Row label="Status" value={statusLabel(event.status)} />
+        <Row label="Status" value={statusLabel(status)} />
         {event.duration_ms !== null && <Row label="Duration" value={formatDuration(event.duration_ms)} />}
         <Row label="When" value={formatWhen(event.timestamp)} />
         {event.tool_name && <Row label="Tool" value={event.tool_name} />}
@@ -299,6 +307,13 @@ function EventInspector({ event, events = [] }: { event: EventItem; events?: Eve
         <div className="space-y-1">
           <SectionTitle>Result</SectionTitle>
           <ValueBlock value={result} />
+        </div>
+      )}
+
+      {agentOutput !== undefined && (
+        <div className="space-y-1">
+          <SectionTitle>Agent output</SectionTitle>
+          <ValueBlock value={agentOutput} />
         </div>
       )}
 
@@ -371,16 +386,34 @@ function ModelContent({ event }: { event: EventItem }) {
   )
 }
 
+const LONG_MESSAGE = 700
+
 function MessageList({ messages }: { messages: MessageView[] }) {
   return (
     <ul className="space-y-1.5">
       {messages.map((message, index) => (
         <li key={index} className="rounded border border-line bg-surface px-2 py-1.5">
           <p className="text-[10px] font-semibold uppercase tracking-wider text-muted">{message.label}</p>
-          <p className="text-xs whitespace-pre-wrap break-words max-h-48 overflow-auto">{message.text}</p>
+          <MessageText text={message.text} />
         </li>
       ))}
     </ul>
+  )
+}
+
+/** A long message (a system prompt, a file) is shortened with a button to read it whole: an inner scroll box would trap the wheel. */
+function MessageText({ text }: { text: string }) {
+  const [whole, setWhole] = useState(false)
+  const long = text.length > LONG_MESSAGE
+  return (
+    <>
+      <p className="text-xs whitespace-pre-wrap break-words">{long && !whole ? `${text.slice(0, LONG_MESSAGE)}…` : text}</p>
+      {long && (
+        <button type="button" onClick={() => setWhole((value) => !value)} className="mt-1 text-[10px] text-accent hover:underline">
+          {whole ? "Show less" : `Show all (${text.length.toLocaleString("en-GB")} characters)`}
+        </button>
+      )}
+    </>
   )
 }
 
@@ -426,7 +459,7 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="flex justify-between gap-3 py-0.5 border-b border-line/50">
       <span className="text-muted shrink-0">{label}</span>
-      <span className="font-medium truncate max-w-[200px]" title={typeof value === "string" ? value : undefined}>{value}</span>
+      <span className="font-medium text-right break-words max-w-[200px]" title={typeof value === "string" ? value : undefined}>{value}</span>
     </div>
   )
 }

@@ -23,14 +23,6 @@ export function Sidebar({ runs, selectedRunId, onSelectRun }: SidebarProps) {
     })
   }, [runs, search, statusFilter])
 
-  const stats = useMemo(() => {
-    if (runs.length === 0) return null
-    const completed = runs.filter((r) => r.status === "completed").length
-    const failed = runs.filter((r) => r.status === "failed").length
-    const pct = runs.length > 0 ? Math.round((completed / runs.length) * 100) : 0
-    return { total: runs.length, completed, failed, errors: runs.reduce((s, r) => s + r.error_count, 0), pct }
-  }, [runs])
-
   return (
     <aside className="w-72 min-w-72 border-r border-line bg-surface flex flex-col shrink-0">
       <div className="px-3 py-2 border-b border-line">
@@ -104,35 +96,6 @@ export function Sidebar({ runs, selectedRunId, onSelectRun }: SidebarProps) {
         ))}
       </div>
 
-      {stats && (
-        <div className="px-3 py-2.5 border-t border-line bg-bg shrink-0">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted mb-2">Session Stats</p>
-          <div className="grid grid-cols-2 gap-x-3 gap-y-1">
-            <div className="flex justify-between text-[11px]">
-              <span className="text-muted">Total</span>
-              <span className="font-medium">{stats.total}</span>
-            </div>
-            <div className="flex justify-between text-[11px]">
-              <span className="text-muted">OK</span>
-              <span className="font-medium text-accent">{stats.pct}%</span>
-            </div>
-            <div className="flex justify-between text-[11px]">
-              <span className="text-muted">Failed</span>
-              <span className={`font-medium ${stats.failed > 0 ? "text-danger" : ""}`}>{stats.failed}</span>
-            </div>
-            <div className="flex justify-between text-[11px]">
-              <span className="text-muted">Errors</span>
-              <span className={`font-medium ${stats.errors > 0 ? "text-warning" : ""}`}>{stats.errors}</span>
-            </div>
-          </div>
-          <div className="mt-2 h-1 bg-line rounded-full overflow-hidden">
-            <div
-              className="h-full bg-accent rounded-full transition-all"
-              style={{ width: `${stats.pct}%` }}
-            />
-          </div>
-        </div>
-      )}
     </aside>
   )
 }

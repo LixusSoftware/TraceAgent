@@ -10,7 +10,8 @@ import {
 } from "@xyflow/react";
 import type { GraphResponse, GraphNode, GraphEdge } from "../../types";
 import { api } from "../../api";
-import { decisionKindLabel, eventNodeLabel, truncate } from "../../lib/humanize";
+import { decisionKindLabel, stepNodeLabel, truncate } from "../../lib/humanize";
+import { formatDuration } from "../../lib/utils";
 import { GitBranch, Map } from "lucide-react";
 
 interface ExecutionGraphProps {
@@ -28,6 +29,14 @@ const NODE_STYLES: Record<string, { border: string; background: string }> = {
   default: { border: "#737373", background: "#141414" },
 };
 
+/** An execution node is a whole step: its name and how long it took. Other nodes keep their own label. */
+function stepLabel(node: GraphNode): string {
+  if (node.type !== "event") return node.label
+  const duration = typeof node.data?.durationMs === "number" ? node.data.durationMs : null
+  const title = stepNodeLabel(node.label, node.data)
+  return duration === null ? title : `${title} · ${formatDuration(duration)}`
+}
+
 function buildFlowNodes(nodes: GraphNode[]): Node[] {
   return nodes.map((node) => {
     const isFailed =
@@ -41,7 +50,7 @@ function buildFlowNodes(nodes: GraphNode[]): Node[] {
       type: "default",
       position: node.position,
       // A long label (a whole script, for example) would make a huge node: the full text is in the inspector.
-      data: { ...node.data, label: truncate(node.type === "event" ? eventNodeLabel(node.label, node.data?.toolName) : node.label, 60) },
+      data: { ...node.data, label: truncate(stepLabel(node), 60) },
       draggable: false,
       selectable: true,
       sourcePosition: Position.Bottom,

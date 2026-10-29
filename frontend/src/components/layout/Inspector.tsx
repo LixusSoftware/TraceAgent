@@ -3,13 +3,15 @@ import type { RunOverview, EventItem, GraphNode } from "../../types"
 import { formatDuration, formatWhen } from "../../lib/utils"
 import {
   decisionKindLabel,
+  describeMessages,
   eventTitle,
   outcomeLabel,
   statusLabel,
   tokensLabel,
   truncate,
+  type MessageView,
 } from "../../lib/humanize"
-import { JsonViewer } from "../JsonViewer"
+import { CopyButton, JsonViewer } from "../JsonViewer"
 
 interface InspectorProps {
   overview: RunOverview | null
@@ -32,9 +34,9 @@ export function Inspector({ overview, selectedEvent, selectedGraphNode, events =
         {selectedGraphNode ? (
           <GraphNodeInspector node={selectedGraphNode} events={events} onSelectEvent={onSelectEvent} />
         ) : selectedEvent ? (
-          <EventInspector event={selectedEvent} />
+          <EventInspector event={selectedEvent} events={events} />
         ) : overview ? (
-          <RunInspector overview={overview} />
+          <RunInspector overview={overview} events={events} />
         ) : (
           <p className="text-xs text-muted text-center py-8">
             {isLoading ? "Loading run..." : "Select a run, event, or graph node to inspect."}
@@ -65,7 +67,7 @@ function GraphNodeInspector({
 
   if (node.type === "event") {
     const event = events.find((item) => item.id === node.data?.eventId)
-    if (event) return <EventInspector event={event} />
+    if (event) return <EventInspector event={event} events={events} />
   }
 
   if (node.type === "decision") {
@@ -125,8 +127,37 @@ function GraphNodeInspector({
   )
 }
 
-function RunInspector({ overview }: { overview: RunOverview }) {
+/** A value to read: a text as text, anything else as formatted JSON, both copiable. */
+function ValueBlock({ value, maxHeight = "240px" }: { value: unknown; maxHeight?: string }) {
+  if (typeof value === "string") {
+    return (
+      <div className="relative rounded border border-line bg-bg p-2">
+        <div className="absolute top-1 right-1"><CopyButton text={value} label="Copy" /></div>
+        <p className="text-xs whitespace-pre-wrap break-words overflow-auto pr-6" style={{ maxHeight }}>{value}</p>
+      </div>
+    )
+  }
+  return <JsonViewer value={value} maxHeight={maxHeight} />
+}
+
+/** What the agent answered, whole when the server kept it, else its summary: the first thing to read in a run. */
+function FinalOutput({ overview, events }: { overview: RunOverview; events: EventItem[] }) {
+  const ended = [...events].reverse().find((event) => event.type === "run.completed")
+  const whole = (ended?.payload_full as { final_output?: unknown } | null | undefined)?.final_output
+  const text = overview.final_output_summary
+  if (whole === undefined && !text) return null
+  const failed = overview.status === "failed"
+  return (
+    <div className="space-y-1">
+      <SectionTitle>{failed ? "Why it failed" : "Final output"}</SectionTitle>
+      <ValueBlock value={whole !== undefined ? whole : text} maxHeight="280px" />
+    </div>
+  )
+}
+
+function RunInspector({ overview, events }: { overview: RunOverview; events: EventItem[] }) {
   const tokens = overview.execution.token_usage?.total_tokens ?? 0
+  const steps = overview.tool_count + overview.execution.command_count
   return (
     <div className="space-y-4">
       <div>
@@ -134,8 +165,15 @@ function RunInspector({ overview }: { overview: RunOverview }) {
         <p className="text-xs text-muted">{overview.goal}</p>
       </div>
 
+      <FinalOutput overview={overview} events={events} />
+
       <div className="grid grid-cols-2 gap-2">
-        <Stat icon={Hash} label="Tools" value={overview.tool_count} />
+        <Stat
+          icon={Hash}
+          label="Steps"
+          value={steps}
+          title={`${overview.tool_count} tool calls, ${overview.execution.command_count} commands`}
+        />
         <Stat icon={Zap} label="Errors" value={overview.error_count} />
         <Stat icon={Clock} label="Duration" value={formatDuration(overview.execution.duration_ms)} />
         <Stat icon={Calendar} label="Started" value={formatWhen(overview.started_at)} />
@@ -147,10 +185,9 @@ function RunInspector({ overview }: { overview: RunOverview }) {
           <Row label="Status" value={statusLabel(overview.status)} />
           <Row label="Provider" value={overview.provider ?? "—"} />
           <Row label="Model" value={overview.model ?? "—"} />
-          <Row label="Turns" value={overview.execution.model_turn_count} />
+          <Row label="Model calls" value={overview.execution.model_turn_count} />
           {tokens > 0 && <Row label="Tokens" value={tokens.toLocaleString()} />}
           {overview.retry_count > 0 && <Row label="Retries" value={overview.retry_count} />}
-          <Row label="Commands" value={overview.execution.command_count} />
         </div>
       </div>
 
@@ -178,13 +215,58 @@ function RunInspector({ overview }: { overview: RunOverview }) {
   )
 }
 
-function EventInspector({ event }: { event: EventItem }) {
+// Metadata keys the event inspector already presents (as rows, sections or the title), or that are internal bookkeeping.
+const SHOWN_ABOVE = new Set([
+  "provider", "model", "prompt_tokens", "completion_tokens", "total_tokens", "requests", "tool_calls", "requested_tools",
+  "agent_name", "message_count", "run_step", "finish_reason", "finish_reasons", "call_id", "tool_name", "args_summary",
+  "output_summary", "output_hash", "prompt_summary", "agent_call_id", "conversation_id", "pydantic_run_id",
+])
+
+/** A text that is JSON shows as JSON; anything else stays a text. */
+function parseMaybe(value: unknown): unknown {
+  if (typeof value !== "string") return value
+  try {
+    const parsed = JSON.parse(value)
+    return parsed !== null && typeof parsed === "object" ? parsed : value
+  } catch {
+    return value
+  }
+}
+
+/** An internal identifier: kept for debugging, with a button to copy it. */
+function IdRow({ label, value }: { label: string; value: string | null }) {
+  if (!value) return <Row label={label} value="—" />
+  return (
+    <div className="flex items-center justify-between gap-2 py-0.5 border-b border-line/50">
+      <span className="text-muted shrink-0">{label}</span>
+      <span className="flex items-center gap-1 min-w-0">
+        <span className="font-mono text-[11px] truncate" title={value}>{value}</span>
+        <CopyButton text={value} label={`Copy ${label}`} />
+      </span>
+    </div>
+  )
+}
+
+function argsOf(event: EventItem | undefined): unknown {
+  return event?.payload_full && typeof event.payload_full === "object" ? (event.payload_full as Record<string, unknown>).args : null
+}
+
+function EventInspector({ event, events = [] }: { event: EventItem; events?: EventItem[] }) {
   const failed = event.status === "failed"
   const tokens = tokensLabel(event)
   const requestedTools = Array.isArray(event.metadata?.requested_tools) ? (event.metadata.requested_tools as string[]) : []
   const agentName = typeof event.metadata?.agent_name === "string" ? event.metadata.agent_name : null
-  const args = event.payload_full && typeof event.payload_full === "object" ? (event.payload_full as Record<string, unknown>).args : null
+  // The arguments live in the event that started the tool, which the timeline no longer lists as a row of its own.
+  const started = events.find((other) => other.step_id === event.step_id && other.type === "tool.started")
+  const args = argsOf(event) ?? argsOf(started)
   const hasArgs = args !== null && typeof args === "object" && Object.keys(args as object).length > 0
+  const isModelCall = event.type.startsWith("llm.")
+  const payload = (event.payload_full ?? {}) as Record<string, unknown>
+  // What a finished tool returned: the whole output when it was kept, else its summary.
+  const result = event.type === "tool.succeeded" ? (payload.output !== undefined ? payload.output : parseMaybe(payload.output_summary)) : undefined
+  const finalOutput = event.type === "run.completed" ? payload.final_output : undefined
+  // The metadata the inspector already shows above would only repeat itself.
+  const leftover = Object.fromEntries(Object.entries(event.metadata ?? {}).filter(([key, value]) => !SHOWN_ABOVE.has(key) && value !== null && value !== undefined))
 
   return (
     <div className="space-y-4">
@@ -195,7 +277,7 @@ function EventInspector({ event }: { event: EventItem }) {
       </div>
 
       <div className="space-y-1 text-xs">
-        <Row label="Result" value={statusLabel(event.status)} />
+        <Row label="Status" value={statusLabel(event.status)} />
         {event.duration_ms !== null && <Row label="Duration" value={formatDuration(event.duration_ms)} />}
         <Row label="When" value={formatWhen(event.timestamp)} />
         {event.tool_name && <Row label="Tool" value={event.tool_name} />}
@@ -213,14 +295,30 @@ function EventInspector({ event }: { event: EventItem }) {
         </div>
       )}
 
+      {result !== undefined && (
+        <div className="space-y-1">
+          <SectionTitle>Result</SectionTitle>
+          <ValueBlock value={result} />
+        </div>
+      )}
+
+      {finalOutput !== undefined && (
+        <div className="space-y-1">
+          <SectionTitle>Final output</SectionTitle>
+          <ValueBlock value={finalOutput} maxHeight="280px" />
+        </div>
+      )}
+
+      {isModelCall && <ModelContent event={event} />}
+
       <TechnicalDetails>
         <Row label="Source" value={event.actor} />
-        <Row label="Step ID" value={event.step_id ?? "—"} />
-        <Row label="Parent step" value={event.parent_step_id ?? "—"} />
-        {event.metadata && Object.keys(event.metadata).length > 0 && (
+        <IdRow label="Step ID" value={event.step_id} />
+        <IdRow label="Parent step" value={event.parent_step_id} />
+        {Object.keys(leftover).length > 0 && (
           <>
-            <SectionTitle>Metadata</SectionTitle>
-            <JsonViewer value={event.metadata} maxHeight="160px" />
+            <SectionTitle>Other metadata</SectionTitle>
+            <JsonViewer value={leftover} maxHeight="160px" />
           </>
         )}
         {event.payload_full && (
@@ -231,6 +329,58 @@ function EventInspector({ event }: { event: EventItem }) {
         )}
       </TechnicalDetails>
     </div>
+  )
+}
+
+/** What a model call was asked and what it answered: the thing to read to understand a decision. */
+function ModelContent({ event }: { event: EventItem }) {
+  const payload = (event.payload_full ?? {}) as Record<string, unknown>
+  const prompt = describeMessages(payload.input_messages)
+  const response = describeMessages(payload.output_messages)
+
+  if (prompt.length === 0 && response.length === 0) {
+    // Only the finished call carries the content: say why it is missing instead of staying silent.
+    if (event.type !== "llm.completed") return null
+    return (
+      <div className="space-y-1">
+        <SectionTitle>Prompt and response</SectionTitle>
+        <p className="text-xs text-muted">
+          Not captured. The agent sends them unless it turns that off (<code className="font-mono">capture_content=False</code>
+          {" "}or no content in OpenTelemetry), and the server keeps them only while{" "}
+          <code className="font-mono">TRACE_AGENT_CAPTURE_FULL_PAYLOADS</code> is on.
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <>
+      {prompt.length > 0 && (
+        <div className="space-y-1">
+          <SectionTitle>Prompt</SectionTitle>
+          <MessageList messages={prompt} />
+        </div>
+      )}
+      {response.length > 0 && (
+        <div className="space-y-1">
+          <SectionTitle>Response</SectionTitle>
+          <MessageList messages={response} />
+        </div>
+      )}
+    </>
+  )
+}
+
+function MessageList({ messages }: { messages: MessageView[] }) {
+  return (
+    <ul className="space-y-1.5">
+      {messages.map((message, index) => (
+        <li key={index} className="rounded border border-line bg-surface px-2 py-1.5">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted">{message.label}</p>
+          <p className="text-xs whitespace-pre-wrap break-words max-h-48 overflow-auto">{message.text}</p>
+        </li>
+      ))}
+    </ul>
   )
 }
 
@@ -260,9 +410,9 @@ function TechnicalDetails({ children }: { children: React.ReactNode }) {
   )
 }
 
-function Stat({ icon: Icon, label, value }: { icon: typeof Hash; label: string; value: React.ReactNode }) {
+function Stat({ icon: Icon, label, value, title }: { icon: typeof Hash; label: string; value: React.ReactNode; title?: string }) {
   return (
-    <div className="bg-surface border border-line rounded-md p-2">
+    <div className="bg-surface border border-line rounded-md p-2" title={title}>
       <div className="flex items-center gap-1.5 text-muted mb-1">
         <Icon className="w-3 h-3" />
         <span className="text-[10px] uppercase tracking-wider">{label}</span>

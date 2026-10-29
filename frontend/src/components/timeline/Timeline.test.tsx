@@ -142,24 +142,74 @@ describe("Timeline", () => {
   });
 
   it("does not put a result badge on a started event", () => {
-    const started = { ...makeEvent(5, "tool.started", "Started get_weather.", "tool-1", "run-1"), status: "running" };
-    const withStart = makeGroup("tool-1", "get_weather", "run-1", [started, makeEvent(6, "tool.succeeded", "get_weather done", "tool-1", "run-1")]);
-    withStart.tool_name = "get_weather";
+    const started = { ...makeEvent(3, "llm.started", "Model request to m", "llm-1", "run-1"), status: "running" };
+    const model = makeGroup("llm-1", "llm.completed", "run-1", [started, makeEvent(4, "llm.completed", "Model responded via p", "llm-1", "run-1")]);
 
-    renderTimeline([run, withStart]);
+    renderTimeline([run, model]);
     fireEvent.click(screen.getByRole("button", { name: "Expand all steps" }));
 
-    const startedRow = screen.getByText("Started get_weather.").closest("button") as HTMLElement;
-    const doneRow = screen.getByText("get_weather done").closest("button") as HTMLElement;
+    const startedRow = screen.getByText("Model request to m").closest("button") as HTMLElement;
+    const doneRow = screen.getByText("Model responded via p").closest("button") as HTMLElement;
     expect(startedRow).not.toHaveTextContent(/\brun\b/);
     expect(doneRow).toHaveTextContent("ok");
+  });
+
+  it("shows what a tool returned in its row, so a long run is read without opening every call", () => {
+    const withResult = makeGroup("tool-1", "comprobar", "run-1", [
+      makeEvent(5, "tool.started", "Started comprobar.", "tool-1", "run-1"),
+      makeEvent(6, "tool.succeeded", "veredicto: descartado", "tool-1", "run-1"),
+    ]);
+    withResult.tool_name = "comprobar";
+
+    renderTimeline([run, withResult]);
+
+    expect(screen.getByText("→ veredicto: descartado")).toBeInTheDocument();
+  });
+
+  it("shows a failed tool's reason, and says nothing when the tool returned no output", () => {
+    const failed = makeGroup("tool-1", "comprobar", "run-1", [
+      makeEvent(5, "tool.started", "Started comprobar.", "tool-1", "run-1"),
+      makeEvent(6, "tool.failed", "tag no encontrado", "tool-1", "run-1"),
+    ]);
+    failed.tool_name = "comprobar";
+    const silent = makeGroup("tool-2", "otra", "run-1", [
+      makeEvent(7, "tool.started", "Started otra.", "tool-2", "run-1"),
+      makeEvent(8, "tool.succeeded", "otra completed.", "tool-2", "run-1"),
+    ]);
+    silent.tool_name = "otra";
+
+    renderTimeline([run, failed, silent]);
+
+    expect(screen.getByText("→ failed: tag no encontrado")).toBeInTheDocument();
+    expect(screen.queryByText(/otra completed/)).not.toBeInTheDocument();
+  });
+
+  it("leaves out the 'Started <tool>.' row once the tool has a result, but keeps it while it runs", () => {
+    const done = makeGroup("tool-1", "comprobar", "run-1", [
+      makeEvent(5, "tool.started", "Started comprobar.", "tool-1", "run-1"),
+      makeEvent(6, "tool.succeeded", "veredicto: ok", "tool-1", "run-1"),
+    ]);
+    done.tool_name = "comprobar";
+    const running = makeGroup("tool-2", "lenta", "run-1", [
+      makeEvent(7, "tool.started", "Started lenta.", "tool-2", "run-1"),
+      makeEvent(8, "tool.started", "Started lenta again.", "tool-2", "run-1"),
+    ]);
+    running.tool_name = "lenta";
+
+    renderTimeline([run, done, running]);
+    fireEvent.click(screen.getByRole("button", { name: "Expand all steps" }));
+
+    expect(screen.queryByText("Started comprobar.")).not.toBeInTheDocument();
+    expect(screen.getAllByText("veredicto: ok").length).toBeGreaterThan(0);
+    expect(screen.getByText("Started lenta.")).toBeInTheDocument();
   });
 
   it("interleaves own events and child groups in chronological order", () => {
     renderTimeline([run, llm, tool]);
 
     const text = document.body.textContent ?? "";
-    const order = ["Run started", "Model call", "get_weather", "Run completed"].map((s) => text.indexOf(s));
+    // The start of the agent ("Run started") is not a row of its own: its header already says so.
+    const order = ["Model call", "get_weather", "Run completed"].map((s) => text.indexOf(s));
     expect(order.every((i) => i >= 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
   });

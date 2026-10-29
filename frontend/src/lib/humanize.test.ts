@@ -3,11 +3,14 @@ import {
   argsSummary,
   commandTitle,
   decisionKindLabel,
+  describeMessages,
   eventNodeLabel,
   eventTitle,
   groupTitle,
   outcomeLabel,
+  resultSummary,
   statusLabel,
+  stepNodeLabel,
   tokensLabel,
   truncate,
 } from "./humanize";
@@ -149,6 +152,70 @@ describe("argsSummary", () => {
     const started = event("tool.started", { payload_full: { args: { texto: "x".repeat(300) } } });
 
     expect(argsSummary(toolGroup(started), 40)?.length).toBe(40);
+  });
+});
+
+describe("stepNodeLabel", () => {
+  it("names a tool by the tool, a model call and an agent by what they are", () => {
+    expect(stepNodeLabel("tool.succeeded", { stepKind: "tool", toolName: "comprobar" })).toBe("comprobar")
+    expect(stepNodeLabel("llm.completed", { stepKind: "llm" })).toBe("Model call")
+    expect(stepNodeLabel("chain.completed", { stepKind: "chain" })).toBe("Agent run")
+  })
+
+  it("titles a command by its first comment", () => {
+    expect(stepNodeLabel("command.succeeded", { stepKind: "command", command: "python -c \n# Leer las paradas\nprint(1)" })).toBe("Leer las paradas")
+  })
+
+  it("keeps the event title for anything else", () => {
+    expect(stepNodeLabel("run.completed", { stepKind: "run" })).toBe("Run finished")
+    expect(stepNodeLabel("tool.succeeded", {})).toBe("Tool finished")
+  })
+})
+
+describe("resultSummary", () => {
+  const toolGroup = (...events: EventItem[]) => group("lookup", events, "lookup");
+
+  it("is the summary of what the tool returned", () => {
+    expect(resultSummary(toolGroup(event("tool.started"), event("tool.succeeded", { summary: "causa: avería" })))).toBe("causa: avería");
+  });
+
+  it("says why a tool failed", () => {
+    expect(resultSummary(toolGroup(event("tool.started"), event("tool.failed", { summary: "tag no encontrado" })))).toBe("failed: tag no encontrado");
+  });
+
+  it("has nothing to say when the tool returned no output, or has not finished", () => {
+    expect(resultSummary(toolGroup(event("tool.started"), event("tool.succeeded", { summary: "lookup completed." })))).toBeNull();
+    expect(resultSummary(toolGroup(event("tool.started")))).toBeNull();
+  });
+
+  it("cuts a long result", () => {
+    expect(resultSummary(toolGroup(event("tool.succeeded", { summary: "x".repeat(300) })), 40)?.length).toBe(40);
+  });
+});
+
+describe("describeMessages", () => {
+  it("reads text, tool calls and tool results of the GenAI shape", () => {
+    const messages = describeMessages([
+      { role: "user", parts: [{ type: "text", content: "hola" }] },
+      { role: "assistant", parts: [{ type: "tool_call", name: "buscar", arguments: { q: "pasta", n: 2 } }] },
+      { role: "tool", parts: [{ type: "tool_call_response", name: "buscar", result: "dos resultados" }] },
+    ]);
+
+    expect(messages).toEqual([
+      { role: "user", label: "User", text: "hola" },
+      { role: "assistant", label: "Assistant", text: "buscar(q=pasta, n=2)" },
+      { role: "tool", label: "Tool result", text: "buscar → dos resultados" },
+    ]);
+  });
+
+  it("accepts plain content messages and ignores what it cannot read", () => {
+    expect(describeMessages([{ role: "user", content: "hola" }, null, { role: "user" }, 3])).toEqual([{ role: "user", label: "User", text: "hola" }]);
+    expect(describeMessages(undefined)).toEqual([]);
+    expect(describeMessages({ role: "user" })).toEqual([]);
+  });
+
+  it("names a part it does not know instead of dropping the message", () => {
+    expect(describeMessages([{ role: "user", parts: [{ type: "image" }] }])[0].text).toBe("[image]");
   });
 });
 

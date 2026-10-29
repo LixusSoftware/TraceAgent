@@ -3,13 +3,31 @@ import { ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Clock, Alert
 import type { TimelineResponse, EventItem, TimelineGroup } from "../../types"
 import { EventIcon } from "./EventIcon"
 import { formatDuration, formatWhen } from "../../lib/utils"
-import { argsSummary, groupTitle } from "../../lib/humanize"
+import { argsSummary, eventTitle, groupTitle, resultSummary } from "../../lib/humanize"
 
 type TimelineRow = { seq: number; event: EventItem } | { seq: number; child: TimelineGroup }
 
 /** A group has something to open when it holds several events or has child groups. */
 function hasNested(group: TimelineGroup, childrenByParent: Map<string, TimelineGroup[]>): boolean {
   return group.events.length > 1 || group.event_count > group.events.length || childrenByParent.has(group.step_id)
+}
+
+const FINISHES: Record<string, string[]> = {
+  "tool.started": ["tool.succeeded", "tool.failed"],
+  "command.started": ["command.succeeded", "command.failed"],
+  "chain.started": ["chain.completed", "chain.failed"],
+}
+
+/** "Started <tool>." says nothing the step's own row does not say, once the step has a result row. */
+function isRedundantStart(group: TimelineGroup, event: EventItem): boolean {
+  const finishes = FINISHES[event.type]
+  return !!finishes && group.events.some((other) => finishes.includes(other.type))
+}
+
+/** The end of an agent says what it answered; "Pydantic AI run 'agent' completed" says nothing the row does not. */
+function rowText(event: EventItem): string {
+  const answer = event.metadata?.output_summary
+  return event.type === "chain.completed" && typeof answer === "string" && answer ? answer : event.summary
 }
 
 interface TimelineProps {
@@ -165,9 +183,12 @@ function TimelineGroupNode({
   const hasChildren = hasNested(group, childrenByParent)
   const title = groupTitle(group)
   const args = argsSummary(group)
+  const result = resultSummary(group)
   // Own events and child groups interleaved in the order they happened.
   const rows: TimelineRow[] = [
-    ...group.events.map((event): TimelineRow => ({ seq: event.seq, event })),
+    ...group.events
+      .filter((event) => !isRedundantStart(group, event))
+      .map((event): TimelineRow => ({ seq: event.seq, event })),
     ...childGroups.map((child): TimelineRow => ({ seq: child.events[0]?.seq ?? 0, child })),
   ].sort((a, b) => a.seq - b.seq)
   const pct = totalDuration > 0 && group.duration_ms !== null
@@ -186,7 +207,7 @@ function TimelineGroupNode({
         type="button"
         onClick={() => onToggle(group.step_id)}
         aria-expanded={hasChildren ? isExpanded : undefined}
-        aria-label={`${title}${args ? ` (${args})` : ""}, ${group.event_count} events${hasChildren ? (isExpanded ? ", expanded" : ", collapsed") : ""}`}
+        aria-label={`${title}${args ? ` (${args})` : ""}${result ? `, result: ${result}` : ""}, ${group.event_count} events${hasChildren ? (isExpanded ? ", expanded" : ", collapsed") : ""}`}
         title={group.label !== title ? group.label : undefined}
         className="flex items-center gap-1.5 w-full text-left py-1.5 px-2 rounded hover:bg-surface-strong transition-colors group"
         style={{ paddingLeft: `${depth * 16 + 8}px` }}
@@ -208,6 +229,7 @@ function TimelineGroupNode({
             {group.events[0]?.type !== "run.started" && <StatusBadge status={group.status} />}
           </div>
           {args && <p className="text-[10px] text-muted truncate font-mono">{args}</p>}
+          {result && <p className="text-[10px] text-muted truncate font-mono">→ {result}</p>}
           {pct > 0 && (
             <div className="flex items-center gap-2 mt-1">
               <div className="flex-1 h-1 bg-line rounded-full overflow-hidden">
@@ -223,9 +245,6 @@ function TimelineGroupNode({
               {formatDuration(group.duration_ms)}
             </span>
           )}
-          <span className="text-[10px] text-muted bg-surface-strong px-1.5 py-0.5 rounded">
-            {group.event_count} events
-          </span>
         </div>
       </button>
 
@@ -282,6 +301,7 @@ function TimelineEventRow({
       type="button"
       onClick={onSelect}
       aria-pressed={isSelected}
+      aria-label={`${eventTitle(event.type)}: ${rowText(event)}`}
       className={`flex items-center gap-2 w-full text-left py-1.5 px-2 rounded transition-colors ${
         isSelected ? "bg-accent/10" : "hover:bg-surface-strong"
       }`}
@@ -291,7 +311,7 @@ function TimelineEventRow({
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <p className={`text-xs truncate ${isSelected ? "text-accent font-medium" : "text-text"}`}>
-            {event.summary}
+            {rowText(event)}
           </p>
           {/* A "started" event has not finished: its badge would contradict the result shown on the step. */}
           {event.status && !event.type.endsWith(".started") && <StatusBadge status={event.status} />}

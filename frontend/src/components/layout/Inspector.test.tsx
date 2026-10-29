@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { Inspector } from "./Inspector";
-import type { EventItem, GraphNode } from "../../types";
+import type { EventItem, GraphNode, RunOverview } from "../../types";
 
 function event(extra: Partial<EventItem> = {}): EventItem {
   return {
@@ -50,5 +50,147 @@ describe("Inspector", () => {
     render(<Inspector overview={null} selectedEvent={event({ type: "tool.failed", status: "failed", error_code: "ValueError" })} />);
 
     expect(screen.getByText("Error: ValueError")).toBeInTheDocument();
+  });
+
+  describe("a model call", () => {
+    const call = (payload: unknown) => event({ type: "llm.completed", summary: "Model responded via openai", tool_name: null, payload_full: payload as EventItem["payload_full"] });
+
+    it("shows what the model was asked and what it answered", () => {
+      const content = {
+        input_messages: [
+          { role: "system", parts: [{ type: "text", content: "Eres un analista de planta." }] },
+          { role: "user", parts: [{ type: "text", content: "¿Por qué bajó el OEE?" }] },
+          { role: "tool", parts: [{ type: "tool_call_response", id: "t1", name: "consultar_oee", result: { disponibilidad: "78 %" } }] },
+        ],
+        output_messages: [
+          { role: "assistant", parts: [{ type: "tool_call", id: "t2", name: "consultar_paradas", arguments: { linea: 2 } }, { type: "text", content: "Reviso las paradas." }] },
+        ],
+      };
+
+      render(<Inspector overview={null} selectedEvent={call(content)} />);
+
+      expect(screen.getByText("Prompt")).toBeInTheDocument();
+      expect(screen.getByText("Eres un analista de planta.")).toBeInTheDocument();
+      expect(screen.getByText("¿Por qué bajó el OEE?")).toBeInTheDocument();
+      expect(screen.getByText('consultar_oee → {"disponibilidad":"78 %"}')).toBeInTheDocument();
+      expect(screen.getByText("Response")).toBeInTheDocument();
+      expect(screen.getByText(/consultar_paradas\(linea=2\)/)).toBeInTheDocument();
+      expect(screen.getByText("System")).toBeInTheDocument();
+      expect(screen.getByText("Tool result")).toBeInTheDocument();
+    });
+
+    it("says why there is nothing to show instead of staying silent", () => {
+      render(<Inspector overview={null} selectedEvent={call(null)} />);
+
+      expect(screen.getByText("Prompt and response")).toBeInTheDocument();
+      expect(screen.getByText(/Not captured/)).toBeInTheDocument();
+      expect(screen.getByText("TRACE_AGENT_CAPTURE_FULL_PAYLOADS")).toBeInTheDocument();
+    });
+
+    it("says nothing on the started row of a call, which has no content yet", () => {
+      render(<Inspector overview={null} selectedEvent={event({ type: "llm.started", summary: "Model request to m", tool_name: null })} />);
+
+      expect(screen.queryByText("Prompt and response")).not.toBeInTheDocument();
+    });
+  });
+
+  describe("a run", () => {
+    const overview = (extra: Record<string, unknown> = {}) =>
+      ({
+        agent_name: "oee-Q01", goal: "¿Por qué bajó el OEE?", status: "completed", provider: "openai", model: "m", started_at: "2026-10-23T10:00:00",
+        tool_count: 3, error_count: 0, retry_count: 0, final_output_summary: "El OEE bajó por…", flags: [],
+        execution: { duration_ms: 5000, model_turn_count: 2, command_count: 2, token_usage: { total_tokens: 1500 } },
+        ...extra,
+      }) as unknown as RunOverview
+
+    it("puts the whole final output first, formatted and copiable", () => {
+      const ended = event({ id: 9, type: "run.completed", payload_full: { final_output: { recomendacion: "Revisar la envasadora", paradas: 4 } } })
+
+      render(<Inspector overview={overview()} selectedEvent={null} events={[ended]} />)
+
+      expect(screen.getByText("Final output")).toBeInTheDocument()
+      expect(screen.getByText(/Revisar la envasadora/)).toBeInTheDocument()
+      expect(screen.getAllByRole("button", { name: "Copy to clipboard" }).length).toBeGreaterThan(0)
+    })
+
+    it("falls back to the summary when the whole output was not kept", () => {
+      render(<Inspector overview={overview()} selectedEvent={null} events={[]} />)
+
+      expect(screen.getByText("Final output")).toBeInTheDocument()
+      expect(screen.getByText("El OEE bajó por…")).toBeInTheDocument()
+    })
+
+    it("says why a failed run failed", () => {
+      render(<Inspector overview={overview({ status: "failed", final_output_summary: "No activity for 60 minutes" })} selectedEvent={null} events={[]} />)
+
+      expect(screen.getByText("Why it failed")).toBeInTheDocument()
+    })
+
+    it("counts tools and commands as steps, with the breakdown one hover away", () => {
+      render(<Inspector overview={overview()} selectedEvent={null} events={[]} />)
+
+      expect(screen.getByText("Steps")).toBeInTheDocument()
+      expect(screen.getByText("5")).toBeInTheDocument()
+      expect(screen.getByText("Steps").closest("div[title]")).toHaveAttribute("title", "3 tool calls, 2 commands")
+      expect(screen.queryByText("Commands")).not.toBeInTheDocument()
+    })
+  })
+
+  describe("the result of a tool", () => {
+    it("shows the whole output formatted when it was kept", () => {
+      const done = event({ payload_full: { output_summary: "{...}", output: { veredicto: "descartado", ventana: [60, 120] } } })
+
+      render(<Inspector overview={null} selectedEvent={done} />)
+
+      expect(screen.getByText("Result")).toBeInTheDocument()
+      expect(screen.getAllByText(/descartado/).length).toBeGreaterThan(0)
+    })
+
+    it("formats the summary when it is JSON, and shows it as text when it is not", () => {
+      const { unmount } = render(<Inspector overview={null} selectedEvent={event({ payload_full: { output_summary: '{"causa":"avería"}' } })} />)
+      // The formatted result is on view; the raw payload under "Technical details" repeats it, folded away.
+      expect(screen.getAllByText(/causa/).some((node) => node.checkVisibility?.() ?? true)).toBe(true)
+      expect(screen.getByText("Result")).toBeInTheDocument()
+      unmount()
+
+      render(<Inspector overview={null} selectedEvent={event({ payload_full: { output_summary: "Sunny in Madrid" } })} />)
+      expect(screen.getByText("Sunny in Madrid", { selector: "p" })).toBeInTheDocument()
+    })
+  })
+
+  describe("technical details", () => {
+    it("keeps the ids for debugging, each with a button to copy it", () => {
+      render(<Inspector overview={null} selectedEvent={event()} />)
+
+      expect(screen.getByText("step-abc")).not.toBeVisible()
+      expect(screen.getByRole("button", { name: "Copy Step ID" })).toBeInTheDocument()
+      expect(screen.getByRole("button", { name: "Copy Parent step" })).toBeInTheDocument()
+    })
+
+    it("does not repeat the metadata the inspector already shows, only what is left", () => {
+      const withMeta = event({ metadata: { prompt_tokens: 10, completion_tokens: 5, requested_tools: [], custom_flag: "x" } })
+
+      render(<Inspector overview={null} selectedEvent={withMeta} />)
+
+      expect(screen.getByText("Other metadata")).toBeInTheDocument()
+      expect(screen.getByText(/custom_flag/)).toBeInTheDocument()
+      expect(screen.queryByText(/prompt_tokens/)).not.toBeInTheDocument()
+    })
+
+    it("has no metadata section when everything in it is already shown", () => {
+      render(<Inspector overview={null} selectedEvent={event({ metadata: { prompt_tokens: 10, completion_tokens: 5 } })} />)
+
+      expect(screen.queryByText("Other metadata")).not.toBeInTheDocument()
+    })
+  })
+
+  it("finds the arguments of a finished tool in the event that started it", () => {
+    const started = event({ id: 1, type: "tool.started", payload_full: { args: { parametro: "temp_molde_C" } } });
+    const finished = event({ id: 2, type: "tool.succeeded" });
+
+    render(<Inspector overview={null} selectedEvent={finished} events={[started, finished]} />);
+
+    expect(screen.getByText("Arguments")).toBeInTheDocument();
+    expect(screen.getByText(/temp_molde_C/)).toBeInTheDocument();
   });
 });

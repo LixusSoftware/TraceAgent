@@ -7,6 +7,31 @@ interface JsonViewerProps {
   maxHeight?: string;
 }
 
+/** A button that copies a text and says so. */
+export function CopyButton({ text, label = "Copy" }: { text: string; label?: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // the browser may refuse the clipboard: nothing to do
+    }
+  };
+  return (
+    <button
+      type="button"
+      onClick={copy}
+      aria-label={copied ? "Copied" : label}
+      title={copied ? "Copied" : label}
+      className="p-1 rounded text-muted hover:text-text hover:bg-surface-strong transition-colors"
+    >
+      {copied ? <Check className="w-3 h-3 text-accent" aria-hidden="true" /> : <Copy className="w-3 h-3" aria-hidden="true" />}
+    </button>
+  );
+}
+
 export function JsonViewer({ value, className = "", maxHeight = "auto" }: JsonViewerProps) {
   const [copied, setCopied] = useState(false);
 
@@ -26,9 +51,11 @@ export function JsonViewer({ value, className = "", maxHeight = "auto" }: JsonVi
   return (
     <div className={`relative group bg-bg border border-line rounded p-2 overflow-auto ${className}`} style={{ maxHeight }}>
       <button
+        type="button"
         onClick={handleCopy}
-        className="absolute top-1.5 right-1.5 p-1 rounded bg-surface-strong border border-line opacity-0 group-hover:opacity-100 transition-opacity hover:bg-surface"
+        className="absolute top-1.5 right-1.5 p-1 rounded bg-surface-strong border border-line opacity-70 group-hover:opacity-100 focus:opacity-100 transition-opacity hover:bg-surface"
         title="Copy to clipboard"
+        aria-label="Copy to clipboard"
       >
         {copied ? (
           <Check className="w-3 h-3 text-accent" />

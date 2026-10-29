@@ -28,6 +28,10 @@ describe("formatWhen", () => {
     expect(result).toMatch(/\d{1,2}/);
     expect(result).toContain("15");
   });
+  it("writes the month in English whatever the language of the browser", () => {
+    expect(formatWhen("2024-01-15T10:30:00Z")).toContain("Jan");
+    expect(formatWhen("2024-10-29T10:30:00Z")).toContain("Oct");
+  });
 });
 
 describe("formatMs", () => {

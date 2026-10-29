@@ -97,6 +97,20 @@ export function groupTitle(group: TimelineGroup): string {
   return typeof detail === "string" && detail ? `${title} · ${detail}` : title
 }
 
+/** Title of an execution-graph node, which is a whole step: the tool, a model call, an agent run, a command. */
+export function stepNodeLabel(label: string, data: Record<string, unknown> = {}): string {
+  const kind = typeof data.stepKind === "string" ? data.stepKind : ""
+  const tool = typeof data.toolName === "string" && data.toolName ? data.toolName : null
+  if (kind === "tool" && tool) return tool
+  if (kind === "llm") return "Model call"
+  if (kind === "chain") return "Agent run"
+  if (kind === "command") {
+    const command = typeof data.command === "string" ? data.command : typeof data.summary === "string" ? data.summary : "command"
+    return commandTitle(command, 48)
+  }
+  return eventNodeLabel(label, tool)
+}
+
 /** Label of an execution-graph event node: what happened, and to which tool. */
 export function eventNodeLabel(type: string, toolName: unknown): string {
   const title = eventTitle(type)
@@ -150,4 +164,47 @@ export function argsSummary(group: TimelineGroup, max = 90): string | null {
     .map(([key, value]) => `${key}=${formatValue(value)}`)
     .join(", ")
   return truncate(text, max)
+}
+
+/** What a tool call returned (or why it failed), in one line, so a long run can be read without opening every call. */
+export function resultSummary(group: TimelineGroup, max = 90): string | null {
+  const done = [...group.events].reverse().find((event) => event.type === "tool.succeeded" || event.type === "tool.failed")
+  const summary = done?.summary?.trim()
+  // Without an output the server writes "<tool> completed.": that says nothing the row does not already say.
+  if (!done || !summary || summary === `${group.tool_name} completed.`) return null
+  return done.type === "tool.failed" ? `failed: ${truncate(summary, max)}` : truncate(summary, max)
+}
+
+export type MessageView = { role: string; label: string; text: string }
+
+const ROLE_LABELS: Record<string, string> = { system: "System", user: "User", assistant: "Assistant", tool: "Tool result" }
+
+function partText(part: Record<string, unknown>): string {
+  switch (part.type) {
+    case "text":
+    case "thinking":
+      return String(part.content ?? "")
+    case "tool_call": {
+      const args = part.arguments && typeof part.arguments === "object" ? Object.entries(part.arguments as Record<string, unknown>).map(([key, value]) => `${key}=${formatValue(value)}`).join(", ") : ""
+      return `${String(part.name ?? "tool")}(${args})`
+    }
+    case "tool_call_response":
+      return `${String(part.name ?? "tool")} → ${formatValue(part.result)}`
+    default:
+      return typeof part.content === "string" ? part.content : `[${String(part.type ?? "content")}]`
+  }
+}
+
+/** The messages of a model call (OpenTelemetry GenAI shape: role + parts) as readable blocks. */
+export function describeMessages(value: unknown): MessageView[] {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((message): MessageView[] => {
+    if (!message || typeof message !== "object") return []
+    const { role, parts, content } = message as { role?: unknown; parts?: unknown; content?: unknown }
+    const name = typeof role === "string" ? role : "unknown"
+    const text = Array.isArray(parts)
+      ? parts.filter((part): part is Record<string, unknown> => !!part && typeof part === "object").map(partText).join("\n")
+      : typeof content === "string" ? content : ""
+    return text ? [{ role: name, label: ROLE_LABELS[name] ?? name, text }] : []
+  })
 }

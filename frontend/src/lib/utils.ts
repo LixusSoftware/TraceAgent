@@ -19,7 +19,8 @@ export function formatDuration(ms: number | null): string {
 export function formatWhen(iso: string | null): string {
   if (!iso) return "—"
   const d = new Date(iso)
-  return d.toLocaleString(undefined, {
+  // A fixed locale: the interface is in English, and the browser's locale would show the month in another language.
+  return d.toLocaleString("en-GB", {
     month: "short",
     day: "numeric",
     hour: "2-digit",

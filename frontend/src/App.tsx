@@ -247,7 +247,7 @@ export default function App() {
               )}
             </>
           )}
-          {workspaceMode !== "compare" && showBottomPanel && (
+          {workspaceMode === "run" && showBottomPanel && (
             <BottomPanel
               selectedRunId={selectedRunId}
               overview={overview}
@@ -256,7 +256,8 @@ export default function App() {
             />
           )}
         </main>
-        {workspaceMode !== "compare" && showInspector && (
+        {/* The inspector is about the run that is open: the dashboard and the comparison have nothing to inspect. */}
+        {workspaceMode === "run" && showInspector && (
           <Inspector
             overview={overview}
             selectedEvent={selectedEvent}

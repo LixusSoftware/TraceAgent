@@ -75,11 +75,11 @@ export function CompareView({ runs }: CompareViewProps) {
             <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
               <DiffStat label="Tools" delta={result.overview_diff.tool_count_delta} />
               <DiffStat label="Commands" delta={result.overview_diff.command_count_delta} />
-              <DiffStat label="Errors" delta={result.overview_diff.error_count_delta} />
-              <DiffStat label="Retries" delta={result.overview_diff.retry_count_delta} />
+              <DiffStat label="Errors" delta={result.overview_diff.error_count_delta} lowerIsBetter />
+              <DiffStat label="Retries" delta={result.overview_diff.retry_count_delta} lowerIsBetter />
               <DiffStat label="Artifacts" delta={result.overview_diff.artifact_count_delta} />
-              <DiffStat label="Tokens" delta={result.overview_diff.token_total_delta} />
-              <DiffStat label="Duration (ms)" delta={result.overview_diff.duration_ms_delta} />
+              <DiffStat label="Tokens" delta={result.overview_diff.token_total_delta} lowerIsBetter />
+              <DiffStat label="Duration" delta={result.overview_diff.duration_ms_delta} lowerIsBetter format={formatDuration} />
             </div>
           </div>
 
@@ -226,7 +226,21 @@ function RunCard({ run, title }: { run: { agent_name: string; goal: string; stat
   );
 }
 
-function DiffStat({ label, delta }: { label: string; delta: number | null }) {
+/**
+ * A difference between the two runs (right minus left). Only a metric where less is better (errors, retries,
+ * tokens, time) is colored as better or worse: fewer tools or commands is not worse, just different.
+ */
+function DiffStat({
+  label,
+  delta,
+  lowerIsBetter = false,
+  format = String,
+}: {
+  label: string;
+  delta: number | null;
+  lowerIsBetter?: boolean;
+  format?: (value: number) => string;
+}) {
   if (delta === null) {
     return (
       <div className="bg-bg border border-line rounded p-2">
@@ -237,16 +251,16 @@ function DiffStat({ label, delta }: { label: string; delta: number | null }) {
   }
   const isPositive = delta > 0;
   const isNegative = delta < 0;
+  const tone = !lowerIsBetter || delta === 0 ? "text-text" : isNegative ? "text-accent" : "text-danger";
+  const sign = isPositive ? "+" : isNegative ? "−" : "";
   return (
-    <div className="bg-bg border border-line rounded p-2">
+    <div className="bg-bg border border-line rounded p-2" title={lowerIsBetter ? "Right run minus left run. Lower is better." : "Right run minus left run."}>
       <p className="text-[10px] text-muted">{label}</p>
       <div className="flex items-center gap-1">
-        {isPositive && <ChevronRight className="w-3 h-3 text-accent rotate-[-90deg]" />}
-        {isNegative && <ChevronRight className="w-3 h-3 text-danger rotate-90" />}
-        {!isPositive && !isNegative && <Minus className="w-3 h-3 text-muted" />}
-        <span className={`text-sm font-medium ${isPositive ? "text-accent" : isNegative ? "text-danger" : "text-muted"}`}>
-          {delta > 0 ? `+${delta}` : delta}
-        </span>
+        {isPositive && <ChevronRight className={`w-3 h-3 ${tone} rotate-[-90deg]`} aria-hidden="true" />}
+        {isNegative && <ChevronRight className={`w-3 h-3 ${tone} rotate-90`} aria-hidden="true" />}
+        {!isPositive && !isNegative && <Minus className="w-3 h-3 text-muted" aria-hidden="true" />}
+        <span className={`text-sm font-medium ${tone}`}>{`${sign}${format(Math.abs(delta))}`}</span>
       </div>
     </div>
   );

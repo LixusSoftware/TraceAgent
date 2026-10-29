@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Shield, FileOutput } from "lucide-react";
+import { Shield, FileOutput, ChevronDown, ChevronUp } from "lucide-react";
 import type { AuditReport, RunOverview, Artifact } from "../../types";
 import { api } from "../../api";
 import { JsonViewer } from "../JsonViewer";
@@ -41,20 +41,43 @@ export function BottomPanel({ selectedRunId, overview, activeTab, onTabChange }:
     return () => { isCurrent = false; };
   }, [selectedRunId]);
 
+  // Closed by default: the timeline needs the height more than a report that often says little. A tab opens it,
+  // and the tab that is already open closes it.
+  const [open, setOpen] = useState(false);
+  const choose = (tab: BottomTab) => {
+    if (open && tab === activeTab) {
+      setOpen(false);
+      return;
+    }
+    onTabChange(tab);
+    setOpen(true);
+  };
+
   return (
     <div className="shrink-0 border-t border-line bg-surface flex flex-col">
-      <div className="flex border-b border-line bg-bg">
-        <TabButton tab="audit" active={activeTab} onClick={onTabChange} icon={Shield} label="Audit" />
-        <TabButton tab="output" active={activeTab} onClick={onTabChange} icon={FileOutput} label="Output" />
+      <div className="flex items-center border-b border-line bg-bg">
+        <TabButton tab="audit" active={activeTab} open={open} onClick={choose} icon={Shield} label="Audit" />
+        <TabButton tab="output" active={activeTab} open={open} onClick={choose} icon={FileOutput} label="Output" />
+        <button
+          type="button"
+          onClick={() => setOpen((value) => !value)}
+          aria-label={open ? "Collapse the panel" : "Expand the panel"}
+          title={open ? "Collapse the panel" : "Expand the panel"}
+          className="ml-auto mr-2 p-1 rounded text-muted hover:text-text hover:bg-surface-strong transition-colors"
+        >
+          {open ? <ChevronDown className="w-3.5 h-3.5" aria-hidden="true" /> : <ChevronUp className="w-3.5 h-3.5" aria-hidden="true" />}
+        </button>
       </div>
-      <div className="h-48 p-3 overflow-auto">
-        {activeTab === "audit" && (
-          <AuditTab audit={audit} loading={auditLoading} />
-        )}
-        {activeTab === "output" && (
-          <OutputTab overview={overview} artifacts={artifacts} loading={artifactsLoading} />
-        )}
-      </div>
+      {open && (
+        <div className="h-48 p-3 overflow-auto">
+          {activeTab === "audit" && (
+            <AuditTab audit={audit} loading={auditLoading} />
+          )}
+          {activeTab === "output" && (
+            <OutputTab overview={overview} artifacts={artifacts} loading={artifactsLoading} />
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -200,17 +223,20 @@ function OutputTab({
   );
 }
 
-function TabButton({ tab, active, onClick, icon: Icon, label }: {
+function TabButton({ tab, active, open, onClick, icon: Icon, label }: {
   tab: BottomTab;
   active: BottomTab;
+  open: boolean;
   onClick: (t: BottomTab) => void;
   icon: typeof Shield;
   label: string;
 }) {
-  const isActive = active === tab;
+  const isActive = open && active === tab;
   return (
     <button
+      type="button"
       onClick={() => onClick(tab)}
+      aria-pressed={isActive}
       className={`flex items-center gap-1.5 px-4 py-2 text-[11px] font-medium uppercase tracking-wider transition-colors border-t-2 ${
         isActive
           ? "border-accent bg-surface text-text"

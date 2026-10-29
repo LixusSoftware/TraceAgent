@@ -120,6 +120,45 @@ class TestLlmCallUsage:
         assert execution["assistant_turn_count"] == 2
 
 
+class TestLlmCallContent:
+    content = {
+        "input_messages": [{"role": "user", "parts": [{"type": "text", "content": "¿Por qué bajó el OEE?"}]}],
+        "output_messages": [{"role": "assistant", "parts": [{"type": "text", "content": "Por las paradas."}]}],
+    }
+
+    def completed_event(self, client, run_id: str) -> Event:
+        with client.app.state.session_factory() as session:
+            event = session.query(Event).filter_by(run_id=run_id, type="llm.completed").one()
+            session.expunge(event)
+            return event
+
+    def test_what_the_model_was_asked_and_answered_is_stored_with_the_event(self, client) -> None:
+        run_id = start_run(client)
+        observe(client, run_id, kind="llm_call", step_id="l1", status="succeeded", provider="openai", model="m",
+                content=self.content, metadata={"prompt_tokens": 3})
+
+        event = self.completed_event(client, run_id)
+        assert event.payload_full["input_messages"] == self.content["input_messages"]
+        assert event.payload_full["output_messages"] == self.content["output_messages"]
+        assert event.payload_full["prompt_tokens"] == 3
+        # The content is not copied into the metadata that is always kept and listed.
+        assert "input_messages" not in event.event_metadata
+
+    def test_it_is_not_stored_when_full_payloads_are_off(self, tmp_path) -> None:
+        app = create_app(Settings(database_url=f"sqlite:///{tmp_path / 'off.db'}", cors_origins=["http://localhost:5173"], capture_full_payloads=False))
+        client = TestClient(app)
+        run_id = start_run(client)
+        observe(client, run_id, kind="llm_call", step_id="l1", status="succeeded", provider="openai", model="m", content=self.content)
+
+        assert self.completed_event(client, run_id).payload_full is None
+
+    def test_a_call_without_content_is_stored_as_before(self, client) -> None:
+        run_id = start_run(client)
+        observe(client, run_id, kind="llm_call", step_id="l1", status="succeeded", provider="openai", model="m", metadata={"prompt_tokens": 3})
+
+        assert self.completed_event(client, run_id).payload_full == {"prompt_tokens": 3}
+
+
 class TestTokenUsageOfFrameworkRuns:
     def model_call(self, client, run_id, step, **tokens) -> None:
         observe(client, run_id, kind="llm_call", step_id=step, status="succeeded", provider="openai", model="m", metadata=tokens)

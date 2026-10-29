@@ -224,6 +224,26 @@ class TestToolsAndTurns:
         assert "abc123" not in payload["output_summary"]
         assert "[redacted]" in payload["output_summary"]
 
+    def test_the_whole_output_is_reported_masked_so_it_can_be_shown_formatted(self, run) -> None:
+        @run.tool(redact_fields=["token"])
+        def login(user: str) -> dict:
+            return {"user": user, "token": "abc123", "roles": ["admin", "ops"]}
+
+        payload, _ = run._execute_tool({"id": "c", "name": "login", "arguments": {"user": "ann"}, "step_id": "s"})
+
+        assert payload["output"] == {"user": "ann", "token": "[redacted]", "roles": ["admin", "ops"]}
+
+    def test_an_output_that_cannot_be_turned_into_json_is_left_out_not_fatal(self, run) -> None:
+        @run.tool()
+        def loop() -> dict:
+            data: dict = {}
+            data["self"] = data
+            return data
+
+        payload, _ = run._execute_tool({"id": "c", "name": "loop", "arguments": {}, "step_id": "s"})
+
+        assert payload["status"] == "failed" or payload["output"] is None
+
     def test_redacted_arguments_are_masked_in_what_is_reported_but_the_tool_gets_them(self, run) -> None:
         received: dict = {}
 

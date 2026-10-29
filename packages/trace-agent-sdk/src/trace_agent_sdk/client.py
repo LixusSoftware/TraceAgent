@@ -13,7 +13,7 @@ from uuid import uuid4
 
 import httpx
 
-from trace_agent_sdk.redaction import redact_payload, stable_hash, summarize_value
+from trace_agent_sdk.redaction import redact_keys, redact_payload, stable_hash, summarize_value
 
 
 TYPE_MAP = {
@@ -24,6 +24,14 @@ TYPE_MAP = {
     dict: "object",
     list: "array",
 }
+
+
+def _whole_output(output: Any, redact_fields: list[str]) -> Any:
+    """What a tool returned, whole and masked, to show it formatted; None if it cannot be turned into JSON."""
+    try:
+        return redact_keys(json.loads(json.dumps(output, default=str)), redact_fields)
+    except (TypeError, ValueError):
+        return None
 
 
 @dataclass
@@ -478,8 +486,12 @@ class RunSession:
         redact_fields: list[str] | None = None,
         failure_cooldown: float = 30.0,
         flush_timeout: float = 5.0,
+        capture_content: bool = True,
     ) -> Any:
         """Return a Pydantic AI capability bound to this run.
+
+        ``capture_content`` sends what the model was asked and what it answered, to audit each call;
+        the server keeps it only while TRACE_AGENT_CAPTURE_FULL_PAYLOADS is on.
 
         Usage:
             agent = Agent("openai:gpt-4o", capabilities=[run.as_pydantic_ai_capability()])
@@ -495,6 +507,7 @@ class RunSession:
             redact_fields=redact_fields or [],
             failure_cooldown=failure_cooldown,
             flush_timeout=flush_timeout,
+            capture_content=capture_content,
         )
 
     def _execute_tool(self, call: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -514,6 +527,7 @@ class RunSession:
                 "status": "succeeded",
                 "args": redact_payload(arguments, binding.redact_fields),
                 "output_summary": summarize_value(output, binding.redact_fields),
+                "output": _whole_output(output, binding.redact_fields),
                 "output_hash": stable_hash(output),
                 "duration_ms": duration_ms,
                 "artifacts": [],

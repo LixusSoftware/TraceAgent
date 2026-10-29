@@ -190,6 +190,25 @@ class TestRunCreationAndMapping:
         assert completed.event_metadata["prompt_tokens"] == 60
         assert completed.event_metadata["requested_tools"] == ["get_weather"]
 
+    def test_what_the_model_was_asked_and_answered_is_kept_with_the_instructions_first(self, client) -> None:
+        spans = agent_spans()
+        spans[1].attributes["gen_ai__system_instructions"] = json.dumps([{"type": "text", "content": "Be brief."}])
+
+        post(client, export(*spans))
+
+        _, events = load(client)
+        payload = next(e for e in events if e.type == "llm.completed").payload_full
+        assert payload["input_messages"][0] == {"role": "system", "parts": [{"type": "text", "content": "Be brief."}]}
+        assert payload["input_messages"][1]["role"] == "user"
+        assert payload["output_messages"][0]["parts"][0]["name"] == "get_weather"
+
+    def test_without_instructions_the_messages_are_kept_as_they_came(self, client) -> None:
+        post(client, export(*agent_spans()))
+
+        _, events = load(client)
+        payload = next(e for e in events if e.type == "llm.completed").payload_full
+        assert [m["role"] for m in payload["input_messages"]] == ["user"]
+
     def test_tool_arguments_and_result_are_recorded(self, client) -> None:
         post(client, export(*agent_spans()))
 

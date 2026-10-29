@@ -26,11 +26,98 @@ from uuid import uuid4
 
 from pydantic_ai.capabilities import AbstractCapability
 from pydantic_ai.exceptions import ApprovalRequired, CallDeferred
-from trace_agent_sdk.redaction import redact_payload, stable_hash, summarize_value
+from pydantic_core import to_jsonable_python
+from trace_agent_sdk.redaction import redact_keys, redact_payload, stable_hash, summarize_value
 
-# Step id of the innermost run/node being executed. ContextVars propagate down
+# Step id of the innermost run/node/tool being executed. ContextVars propagate down
 # into model requests and tool tasks (also parallel ones) without sharing state.
 _CURRENT_STEP: ContextVar[str | None] = ContextVar("trace_agent_pydantic_ai_step", default=None)
+
+# Longest text kept of one message or tool result: a whole file or a base64 image is not content to audit.
+_MAX_TEXT = 20_000
+
+
+def current_step_id() -> str | None:
+    """Id of the step being run: inside a tool, the step of that tool.
+
+    Pass it as ``parent_step_id`` to what you record by hand from inside a tool
+    (``run.record_command(..., parent_step_id=current_step_id())``) and it appears under the tool in the timeline.
+    """
+    return _CURRENT_STEP.get()
+
+
+def _clip(value: Any) -> Any:
+    """A copy of a JSON value with very long texts cut."""
+    if isinstance(value, str):
+        return value if len(value) <= _MAX_TEXT else f"{value[:_MAX_TEXT]}... [{len(value) - _MAX_TEXT} more characters]"
+    if isinstance(value, dict):
+        return {str(key): _clip(inner) for key, inner in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_clip(inner) for inner in value]
+    return value
+
+
+def _json(value: Any, redact_fields: list[str]) -> Any:
+    return _clip(redact_keys(to_jsonable_python(value, fallback=str), redact_fields))
+
+
+def _text(content: Any) -> str:
+    if isinstance(content, str):
+        return content
+    if isinstance(content, (list, tuple)):
+        return "\n".join(item if isinstance(item, str) else "[non-text content]" for item in content)
+    return str(content)
+
+
+def _genai_messages(messages: Any, redact_fields: list[str]) -> list[dict[str, Any]]:
+    """Pydantic AI messages in the shape of the OpenTelemetry GenAI conventions, which is what the UI reads.
+
+    A request holds several parts (system prompt, user prompt, tool results): each one is a message of its own.
+    The instructions of the agent do not travel as a part but beside the request: they come first, as a system message.
+    """
+    out: list[dict[str, Any]] = []
+    instructions = None
+    for message in messages or []:
+        if getattr(message, "kind", None) != "response" and getattr(message, "instructions", None):
+            instructions = message.instructions  # the last request is the one that was sent
+    if instructions:
+        out.append({"role": "system", "parts": [{"type": "text", "content": _clip(_text(instructions))}]})
+    for message in messages or []:
+        if getattr(message, "kind", None) == "response":
+            out.append({"role": "assistant", "parts": _response_parts(message, redact_fields)})
+            continue
+        for part in getattr(message, "parts", None) or []:
+            kind = getattr(part, "part_kind", "")
+            if kind == "system-prompt":
+                out.append({"role": "system", "parts": [{"type": "text", "content": _clip(_text(part.content))}]})
+            elif kind == "user-prompt":
+                out.append({"role": "user", "parts": [{"type": "text", "content": _clip(_text(part.content))}]})
+            elif kind == "tool-return":
+                result = _json(part.content, redact_fields)
+                out.append({"role": "tool", "parts": [{"type": "tool_call_response", "id": part.tool_call_id, "name": part.tool_name, "result": result}]})
+            elif kind == "retry-prompt":
+                text = part.model_response() if callable(getattr(part, "model_response", None)) else _text(part.content)
+                out.append({"role": "tool" if part.tool_name else "user", "parts": [{"type": "text", "content": _clip(text)}]})
+    return out
+
+
+def _response_parts(response: Any, redact_fields: list[str]) -> list[dict[str, Any]]:
+    parts: list[dict[str, Any]] = []
+    for part in getattr(response, "parts", None) or []:
+        kind = getattr(part, "part_kind", "")
+        if kind == "text":
+            parts.append({"type": "text", "content": _clip(part.content)})
+        elif kind == "thinking":
+            parts.append({"type": "thinking", "content": _clip(part.content)})
+        elif kind == "tool-call":
+            try:
+                arguments = part.args_as_dict()
+            except Exception:  # noqa: BLE001 - arguments that are not valid JSON are kept as text
+                arguments = part.args
+            parts.append({"type": "tool_call", "id": part.tool_call_id, "name": part.tool_name, "arguments": _json(arguments, redact_fields)})
+        else:
+            parts.append({"type": kind})
+    return parts
 
 
 def _new_step_id(prefix: str) -> str:
@@ -77,12 +164,24 @@ class TraceAgentCapability(AbstractCapability[Any]):
     redact_fields: list[str] = field(default_factory=list)
     failure_cooldown: float = 30.0
     flush_timeout: float = 5.0
+    # Send what the model was asked and what it answered, so a call can be audited. The server keeps it only
+    # while TRACE_AGENT_CAPTURE_FULL_PAYLOADS is on.
+    capture_content: bool = True
     # One consumer keeps events in order. That also matters because the backend
     # numbers events per run without locking, so concurrent posts would collide.
     _queue: queue.Queue = field(default_factory=lambda: queue.Queue(maxsize=1000), init=False, repr=False, compare=False)
     _worker: threading.Thread | None = field(default=None, init=False, repr=False, compare=False)
     _worker_lock: threading.Lock = field(default_factory=threading.Lock, init=False, repr=False, compare=False)
     _paused_until: float = field(default=0.0, init=False, repr=False, compare=False)
+
+    def _whole_output(self, output: Any) -> Any:
+        """What a tool returned, whole, to show it formatted; masked and clipped like the content of a model call."""
+        if not self.capture_content:
+            return None
+        try:
+            return _json(output, self.redact_fields)
+        except Exception:  # noqa: BLE001 - what cannot be shown is left out; the agent must not notice
+            return None
 
     # ── Delivery ────────────────────────────────────────────────────────────
 
@@ -233,6 +332,8 @@ class TraceAgentCapability(AbstractCapability[Any]):
         step_id = _new_step_id("llm")
         parent_step_id = _CURRENT_STEP.get()
         model_id = getattr(request_context, "model_id", None)
+        # The provider is known before the model answers: both rows of the call say the same thing about it.
+        provider = getattr(getattr(request_context, "model", None), "system", None)
         started_at = time.perf_counter()
         metadata = {
             "message_count": len(getattr(request_context, "messages", None) or []),
@@ -245,7 +346,9 @@ class TraceAgentCapability(AbstractCapability[Any]):
                 step_id,
                 parent_step_id,
                 "running",
+                provider=provider,
                 model=model_id,
+                input_summary=f"Model request to {model_id or 'model'}",
                 metadata=metadata,
             ),
         )
@@ -260,6 +363,7 @@ class TraceAgentCapability(AbstractCapability[Any]):
                     parent_step_id,
                     "failed",
                     duration_ms=_elapsed_ms(started_at),
+                    provider=provider,
                     model=model_id,
                     error_code=exc.__class__.__name__,
                     error_summary=str(exc),
@@ -270,6 +374,16 @@ class TraceAgentCapability(AbstractCapability[Any]):
         tool_names = [
             part.tool_name for part in response.parts if getattr(part, "part_kind", None) == "tool-call"
         ]
+        answered_by = response.provider_name or provider
+        content = None
+        if self.capture_content:
+            try:
+                content = {
+                    "input_messages": _genai_messages(getattr(request_context, "messages", None), self.redact_fields),
+                    "output_messages": [{"role": "assistant", "parts": _response_parts(response, self.redact_fields)}],
+                }
+            except Exception:  # noqa: BLE001 - what cannot be shown is left out; the agent must not notice
+                content = None
         self._enqueue(
             "observations",
             self._observation(
@@ -278,8 +392,10 @@ class TraceAgentCapability(AbstractCapability[Any]):
                 parent_step_id,
                 "succeeded",
                 duration_ms=_elapsed_ms(started_at),
-                provider=response.provider_name,
+                provider=answered_by,
                 model=response.model_name or model_id,
+                input_summary=f"Model responded via {answered_by or 'provider'}",
+                content=content,
                 metadata={
                     **metadata,
                     **_usage_metadata(response.usage),
@@ -309,6 +425,9 @@ class TraceAgentCapability(AbstractCapability[Any]):
             "parent_step_id": _CURRENT_STEP.get(),
             "args": redact_payload(dict(args), self.redact_fields),
         }
+        # While the tool runs it is the current step: what it records by hand (see current_step_id) and the
+        # agents it calls hang from it, as they do over OpenTelemetry.
+        token = _CURRENT_STEP.set(step_id)
         try:
             output = await handler(args)
         except (CallDeferred, ApprovalRequired):
@@ -331,6 +450,8 @@ class TraceAgentCapability(AbstractCapability[Any]):
                 },
             )
             raise
+        finally:
+            _CURRENT_STEP.reset(token)
         self._enqueue(
             "tool-results",
             {
@@ -339,6 +460,7 @@ class TraceAgentCapability(AbstractCapability[Any]):
                         **result,
                         "status": "succeeded",
                         "output_summary": summarize_value(output, self.redact_fields),
+                        "output": self._whole_output(output),
                         "output_hash": stable_hash(output),
                         "duration_ms": _elapsed_ms(started_at),
                     }

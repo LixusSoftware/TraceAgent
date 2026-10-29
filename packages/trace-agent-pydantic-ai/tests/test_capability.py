@@ -19,7 +19,7 @@ from pydantic_ai import Agent, ModelRetry
 from pydantic_ai.messages import ModelResponse, TextPart, ToolCallPart
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 from pydantic_ai.models.test import TestModel
-from trace_agent_pydantic_ai import TraceAgentCapability
+from trace_agent_pydantic_ai import TraceAgentCapability, current_step_id
 
 
 @pytest.fixture
@@ -116,6 +116,79 @@ class TestModelRequests:
         agent = make_agent(TraceAgentCapability(run_session, record_model_events=False))
         await agent.run("weather please")
         assert observations(posts, "llm_call") == []
+
+    async def test_both_rows_of_a_call_know_the_provider_and_say_it_once_each(self, run_session, posts) -> None:
+        agent = Agent(FunctionModel(lambda m, i: ModelResponse(parts=[TextPart("hi")])), name="a", capabilities=[TraceAgentCapability(run_session)])
+        await agent.run("hello")
+
+        started, completed = observations(posts, "llm_call")
+        assert started["provider"] == completed["provider"] == "function"
+        assert started["input_summary"].startswith("Model request to ")
+        assert completed["input_summary"] == "Model responded via function"
+
+    async def test_a_call_carries_what_was_asked_and_what_was_answered(self, run_session, posts) -> None:
+        agent = Agent(FunctionModel(lambda m, i: ModelResponse(parts=[TextPart("El OEE bajó")])), name="a", instructions="Be brief.", capabilities=[TraceAgentCapability(run_session)])
+        await agent.run("¿Por qué bajó el OEE?")
+
+        content = observations(posts, "llm_call")[-1]["content"]
+        asked = [(m["role"], m["parts"][0]["content"]) for m in content["input_messages"]]
+        assert ("system", "Be brief.") in asked
+        assert ("user", "¿Por qué bajó el OEE?") in asked
+        assert content["output_messages"] == [{"role": "assistant", "parts": [{"type": "text", "content": "El OEE bajó"}]}]
+
+    async def test_content_can_be_turned_off(self, run_session, posts) -> None:
+        agent = make_agent(TraceAgentCapability(run_session, capture_content=False))
+        await agent.run("weather please")
+
+        assert all(obs.get("content") is None for obs in observations(posts, "llm_call"))
+
+    async def test_tool_calls_and_results_in_the_content_follow_redact_fields(self, run_session, posts) -> None:
+        def model(messages: Any, info: AgentInfo) -> ModelResponse:
+            if len(messages) == 1:
+                return ModelResponse(parts=[ToolCallPart("charge", {"customer": "ana", "api_key": "SECRET-KEY"})])
+            return ModelResponse(parts=[TextPart("charged")])
+
+        agent = Agent(FunctionModel(model), name="a", capabilities=[TraceAgentCapability(run_session, redact_fields=["api_key", "card"])])
+
+        @agent.tool_plain
+        def charge(customer: str, api_key: str) -> dict:
+            return {"ok": True, "card": "4111111111111111"}
+
+        await agent.run("charge ana")
+
+        sent = str([obs.get("content") for obs in observations(posts, "llm_call")])
+        assert "SECRET-KEY" not in sent
+        assert "4111111111111111" not in sent
+        assert "[redacted]" in sent
+        assert "ana" in sent
+
+    async def test_the_whole_tool_output_is_sent_masked_and_can_be_turned_off(self, run_session, posts) -> None:
+        def build(**options: Any) -> Agent:
+            agent = Agent(
+                FunctionModel(lambda m, i: ModelResponse(parts=[ToolCallPart("lookup", {})]) if len(m) == 1 else ModelResponse(parts=[TextPart("ok")])),
+                name="a", capabilities=[TraceAgentCapability(run_session, **options)],
+            )
+
+            @agent.tool_plain
+            def lookup() -> dict:
+                return {"veredicto": "descartado", "api_key": "SECRET"}
+
+            return agent
+
+        await build(redact_fields=["api_key"]).run("go")
+        assert tool_results(posts)[-1]["output"] == {"veredicto": "descartado", "api_key": "[redacted]"}
+
+        posts.clear()
+        await build(capture_content=False).run("go")
+        assert tool_results(posts)[-1]["output"] is None
+
+    async def test_very_long_texts_in_the_content_are_cut(self, run_session, posts) -> None:
+        agent = Agent(FunctionModel(lambda m, i: ModelResponse(parts=[TextPart("ok")])), name="a", capabilities=[TraceAgentCapability(run_session)])
+        await agent.run("x" * 50_000)
+
+        text = observations(posts, "llm_call")[-1]["content"]["input_messages"][-1]["parts"][0]["content"]
+        assert len(text) < 21_000
+        assert "more characters" in text
 
 
 class TestToolExecution:
@@ -303,6 +376,22 @@ class TestBackendFailures:
         assert observations(posts, "chain_step")[-1]["status"] == "succeeded"
         assert len(tool_results(posts)) == 1
 
+    async def test_what_a_tool_records_by_hand_hangs_from_the_tool(self, run_session, posts) -> None:
+        seen: dict[str, Any] = {}
+        agent = make_agent(TraceAgentCapability(run_session))
+
+        @agent.tool_plain
+        def inspect_step() -> str:
+            seen["inside"] = current_step_id()
+            return "ok"
+
+        agent.model = FunctionModel(lambda m, i: ModelResponse(parts=[ToolCallPart("inspect_step", {})]) if len(m) == 1 else ModelResponse(parts=[TextPart("done")]))
+        await agent.run("go")
+
+        tool_step = next(r for r in tool_results(posts) if r["name"] == "inspect_step")["step_id"]
+        assert seen["inside"] == tool_step
+        assert current_step_id() is None  # outside any run there is no current step
+
     async def test_nested_run_is_child_of_outer_step(self, run_session, posts) -> None:
         capability = TraceAgentCapability(run_session)
         inner = Agent(FunctionModel(lambda m, i: ModelResponse(parts=[TextPart("inner")])), name="inner", capabilities=[capability])
@@ -318,7 +407,8 @@ class TestBackendFailures:
         runs = [o for o in observations(posts, "chain_step") if o["status"] == "running"]
         by_agent = {o["metadata"]["agent_name"]: o for o in runs}
         assert by_agent["outer"]["parent_step_id"] is None
-        assert by_agent["inner"]["parent_step_id"] == by_agent["outer"]["step_id"]
+        # The agent is called from inside a tool, so it hangs from that tool (as it does over OpenTelemetry).
+        assert by_agent["inner"]["parent_step_id"] == tool_results(posts)[-1]["step_id"]
 
 
 def _call_delegate_then_answer(messages: Any, info: AgentInfo) -> ModelResponse:

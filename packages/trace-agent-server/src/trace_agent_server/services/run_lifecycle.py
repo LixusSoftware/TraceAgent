@@ -86,7 +86,11 @@ def record_tool_result(
             tool_name=result.name,
             duration_ms=result.duration_ms,
             payload_hash=result.output_hash,
-            payload_full={"output_summary": result.output_summary} if capture_full else None,
+            payload_full=(
+                {"output_summary": result.output_summary, **({"output": result.output} if result.output is not None else {})}
+                if capture_full
+                else None
+            ),
             metadata={"call_id": result.call_id, "artifact_count": len(result.artifacts)},
             timestamp=ended_at,
         )
@@ -147,8 +151,12 @@ def complete_run(
     artifacts: Sequence[ArtifactInput] = (),
     *,
     ended_at: datetime | None = None,
+    capture_full: bool = False,
 ) -> dict[str, Any]:
-    """Mark a run completed, record its final output and derive its explanation."""
+    """Mark a run completed, record its final output and derive its explanation.
+
+    The summary of the output is always kept; the whole output only with ``capture_full``.
+    """
     final_summary = summarize_value(final_output) if final_output is not None else "Run finished without final output."
     run.final_output_summary = final_summary
     run.status = "completed"
@@ -161,6 +169,7 @@ def complete_run(
         summary=final_summary,
         status="completed",
         payload_hash=stable_hash(final_output),
+        payload_full={"final_output": final_output} if capture_full and final_output is not None else None,
         timestamp=ended_at,
     )
     for artifact_input in artifacts:

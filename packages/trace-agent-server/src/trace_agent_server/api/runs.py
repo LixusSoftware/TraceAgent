@@ -720,7 +720,7 @@ def store_observations(
                 model=observation.model,
                 error_code=observation.error_code,
                 payload_hash=stable_hash(observation.metadata),
-                payload_full=observation.metadata if capture_full else None,
+                payload_full={**observation.metadata, **(observation.content or {})} if capture_full else None,
                 metadata={
                     "provider": observation.provider,
                     "model": observation.model,
@@ -809,10 +809,12 @@ def store_observations(
 def finish_run(
     run_id: str,
     payload: FinishRunRequest,
+    request: Request,
     session: Session = Depends(get_session),
 ) -> dict[str, Any]:
     run = _get_run_or_404(session, run_id)
-    derivation = complete_run(session, run, payload.final_output, payload.artifacts)
+    capture_full = getattr(request.app.state.settings, "capture_full_payloads", True)
+    derivation = complete_run(session, run, payload.final_output, payload.artifacts, capture_full=capture_full)
     session.commit()
     return {"status": "completed", "run_id": run.id, "decisions": len(derivation["decisions"])}
 

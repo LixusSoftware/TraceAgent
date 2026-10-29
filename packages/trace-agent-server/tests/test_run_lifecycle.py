@@ -100,6 +100,36 @@ class TestRecordToolResult:
         assert all(e.payload_full is None for e in events_of(session, run))
 
 
+class TestFinalOutputAndToolOutput:
+    def test_the_whole_final_output_is_kept_with_full_payloads_on_and_only_the_summary_without(self, session, run) -> None:
+        long_output = {"recomendacion": "x" * 600, "causa": "avería"}
+
+        complete_run(session, run, long_output, capture_full=True)
+        completed = [e for e in events_of(session, run) if e.type == "run.completed"][0]
+
+        assert completed.payload_full == {"final_output": long_output}
+        assert len(completed.summary) <= 220
+
+    def test_without_full_payloads_only_the_summary_is_stored(self, session, run) -> None:
+        complete_run(session, run, {"a": 1})
+
+        assert [e for e in events_of(session, run) if e.type == "run.completed"][0].payload_full is None
+
+    def test_the_whole_tool_output_is_kept_next_to_its_summary(self, session, run) -> None:
+        result = ToolResultInput(call_id="c1", name="check", step_id="s1", status="succeeded", args={}, output_summary="{...}", output={"veredicto": "descartado", "ventana": [60, 120]})
+
+        record_tool_result(session, run, result, capture_full=True)
+
+        done = [e for e in events_of(session, run) if e.type == "tool.succeeded"][0]
+        assert done.payload_full == {"output_summary": "{...}", "output": {"veredicto": "descartado", "ventana": [60, 120]}}
+
+    def test_a_tool_without_output_is_stored_as_before(self, session, run) -> None:
+        record_tool_result(session, run, ToolResultInput(call_id="c1", name="check", step_id="s1", status="succeeded", args={}, output_summary="ok"), capture_full=True)
+
+        done = [e for e in events_of(session, run) if e.type == "tool.succeeded"][0]
+        assert done.payload_full == {"output_summary": "ok"}
+
+
 class TestRunEnd:
     def test_complete_run_sets_status_summary_and_end_time(self, session, run) -> None:
         derivation = complete_run(session, run, {"answer": 42}, ended_at=START)

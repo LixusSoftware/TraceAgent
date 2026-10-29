@@ -61,6 +61,8 @@ class ToolResultInput(BaseModel):
     status: Literal["succeeded", "failed"]
     args: dict[str, Any] = Field(default_factory=dict)
     output_summary: str | None = None
+    # What the tool returned, whole (masked by the sender). Stored only with full payloads on.
+    output: Any | None = None
     output_hash: str | None = None
     error_code: str | None = None
     error_summary: str | None = None
@@ -113,6 +115,8 @@ class ObservationInput(BaseModel):
     provider: str | None = None
     input_summary: str | None = None
     artifact: ArtifactInput | None = None
+    # What a model call was asked and answered (input_messages / output_messages). Stored only with full payloads on.
+    content: dict[str, Any] | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 

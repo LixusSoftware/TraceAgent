@@ -120,6 +120,17 @@ def _first_user_text(input_messages: Any) -> str | None:
     return None
 
 
+def _with_instructions(input_messages: Any, instructions: Any) -> Any:
+    """The instructions of the agent come beside the messages in the GenAI conventions: show them first, as a system message."""
+    parts = _parse_json(instructions)
+    if isinstance(parts, str):
+        parts = [{"type": "text", "content": parts}]
+    if not isinstance(parts, list) or not parts:
+        return input_messages
+    messages = input_messages if isinstance(input_messages, list) else []
+    return [{"role": "system", "parts": parts}, *messages]
+
+
 def _requested_tools(output_messages: Any) -> list[str]:
     names: list[str] = []
     for message in output_messages if isinstance(output_messages, list) else []:
@@ -196,7 +207,7 @@ def _ingest_run(session: Session, run_id: str, spans: list[SpanRecord], capture_
     _track_agent_calls(run, fresh)
     closing = _closing_span(run, fresh) if was_open else None
     if closing is not None:
-        _close_run(session, run, closing)
+        _close_run(session, run, closing, capture_full)
     elif not was_open:
         # Late spans of a finished run: refresh its decisions and flags.
         derive_explanation(session, run)
@@ -328,7 +339,9 @@ def _model_steps(session: Session, run: Run, span: SpanRecord, capture_full: boo
         payload = None
         if capture_full:
             payload = {
-                "input_messages": _parse_json(attributes.get("gen_ai.input.messages")),
+                "input_messages": _with_instructions(
+                    _parse_json(attributes.get("gen_ai.input.messages")), attributes.get("gen_ai.system_instructions")
+                ),
                 "output_messages": output_messages,
             }
         record_event(
@@ -360,6 +373,7 @@ def _tool_steps(session: Session, run: Run, span: SpanRecord, capture_full: bool
         status="failed" if failed else "succeeded",
         args=redact_payload(arguments if isinstance(arguments, dict) else {"input": arguments} if arguments is not None else {}),
         output_summary=summarize_value(_readable(result_text)) if result_text is not None else None,
+        output=_parse_json(result_text) if result_text is not None and not failed else None,
         output_hash=stable_hash(result_text if not failed else {"error": message}),
         error_code=code,
         error_summary=message,
@@ -448,9 +462,9 @@ def _closing_span(run: Run, spans: list[SpanRecord]) -> SpanRecord | None:
     return max(agents, key=lambda s: s.end)
 
 
-def _close_run(session: Session, run: Run, span: SpanRecord) -> None:
+def _close_run(session: Session, run: Run, span: SpanRecord, capture_full: bool) -> None:
     if span.status_code == "ERROR":
         code, message = _error_of(span)
         fail_run_with(session, run, code, message, ended_at=span.end)
     else:
-        complete_run(session, run, span.attributes.get("final_result"), ended_at=span.end)
+        complete_run(session, run, span.attributes.get("final_result"), ended_at=span.end, capture_full=capture_full)

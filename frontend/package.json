@@ -12,7 +12,7 @@
                     "test:watch":  "vitest"
                 },
     "dependencies":  {
-                         "@tailwindcss/vite":  "^4.2.4",
+                         "@tailwindcss/vite":  "^4.3.3",
                          "@xyflow/react":  "^12.10.2",
                          "clsx":  "^2.1.1",
                          "lucide-react":  "^1.11.0",
@@ -20,8 +20,8 @@
                          "react":  "^19.2.5",
                          "react-dom":  "^19.2.5",
                          "recharts":  "^3.8.1",
-                         "tailwind-merge":  "^3.5.0",
-                         "tailwindcss":  "^4.2.4"
+                         "tailwind-merge":  "^3.7.0",
+                         "tailwindcss":  "^4.3.3"
                      },
     "devDependencies":  {
                             "@eslint/js":  "^10.0.1",

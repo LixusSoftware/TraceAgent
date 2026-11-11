@@ -37,7 +37,7 @@ jobs:
 
       - name: Extract metadata (server)
         id: meta-server
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-server
           tags: |
@@ -47,7 +47,7 @@ jobs:
 
       - name: Extract metadata (ui)
         id: meta-ui
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-ui
           tags: |
